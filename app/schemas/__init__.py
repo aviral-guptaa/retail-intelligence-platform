@@ -1,0 +1,1 @@
+"""Shared data structures and Pydantic schemas for the API and ML pipeline."""

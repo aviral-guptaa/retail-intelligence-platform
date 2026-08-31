@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Env / secrets
+.env
+
+# Data + models (download or train)
+data/*.db
+data/raw/*
+data/processed/*
+models/prediction/*.joblib
+models/yolo/*.pt
+models/yolo/*.onnx
+
+# Logs / artifacts
+*.log
+/heatmap-*.png
+*.engine
+
+# macOS
+.DS_Store

@@ -1,0 +1,1 @@
+"""Shopper analytics modules: footfall, line counting, dwell time, heatmaps."""

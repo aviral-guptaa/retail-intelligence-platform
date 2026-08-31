@@ -1,0 +1,89 @@
+# Global application settings for the SIH Retail Intelligence Platform.
+# Values here are safe defaults for a laptop demo; override at the edge.
+
+app:
+  name: "SIH Retail Intelligence"
+  version: "0.2.0"
+  log_level: INFO
+  heartbeat_interval_seconds: 1
+
+demo:                        # Demo mode configuration (no camera / ML required)
+  enabled: true
+  fps: 10
+  frame_width: 1280
+  frame_height: 720
+  duration_seconds: 600      # -1 = run until stopped
+  max_active_shoppers: 22
+  spawn_interval_seconds: 1.6
+
+model:                       # Real inference (used when demo.enabled = false)
+  device: cpu                 # cpu | cuda | 0 | mps
+  conf_threshold: 0.35
+  iou_threshold: 0.45
+  imgsz: 640                  # detection input resolution
+  classes: [0]                # COCO class ids to keep (0 = person); empty = all
+  yolo_model: models/yolo/yolov8n.pt
+  person_class_id: 0
+  product_class_id: 999       # placeholder; set when a product model is trained
+
+processing:                  # Real camera/video throughput control
+  max_fps: 12                # cap on frames fed into the analytics loop (0 = as fast as possible)
+  frame_skip: 0              # extra frames skipped between processed frames (0 = process every frame)
+  retry_interval_seconds: 3  # delay before re-attempting a failed capture open
+  reconnect_max_attempts: 0  # 0 = retry forever; N = give up after N attempts (status -> OFFLINE)
+
+video:
+  loop: true                  # loop a video file when it reaches the end
+
+tracking:
+  backend: auto              # iou | bytetrack | auto (bytetrack needs ultralytics + a YOLO model)
+  max_age_frames: 30          # how many frames a track survives without a match
+  min_hits: 1                 # confirmed tracks require this many consecutive detections
+  iou_match_threshold: 0.30
+  track_buffer_points: 1200   # how many historical positions kept per track (heatmaps)
+
+line_counter:
+  cooldown_frames: 12         # min frames between two counts for the same person
+  entry_direction: down       # down = crossing the line downward counts as an entry (default store layout)
+
+zones:
+  scale_for_heatmap: 4        # heatmap resolution divisor (W/scale x H/scale)
+  heatmap_decay: 0.0          # per-frame grid decay (0.0 = no decay; 0.995 bounds long runs)
+  heatmap_export_path: data/processed/heatmap.png
+  heatmap_export_interval_seconds: 60
+
+shelf:
+  strategy: auto            # auto | classification (CNN) | detection (product boxes) | heuristic
+  low_stock_threshold: 0.30   # ratio of detected items vs expected => LOW_STOCK
+  out_of_stock_threshold: 0.10
+  poll_interval_seconds: 5    # how often shelf state is re-evaluated
+  model_path: models/prediction/shelf_classifier.pt   # CNN weights from scripts/train_shelf_model.py
+
+queue:
+  open_counters: 3
+  average_service_time_seconds: 30   # rule-based wait-time: queue_length * this / open_counters
+  sample_interval_seconds: 5     # persistence interval for queue-length history
+  history_window: 60             # max time-series samples kept in memory
+
+prediction:
+  model_path: models/prediction/queue_model.joblib
+  metrics_path: models/prediction/queue_metrics.json   # MAE/RMSE/R2 + training source for the model
+  log_path: data/processed/queue_features.csv          # real-data collection log (train script reads this)
+  fallback_window: 40            # samples used by the linear fallback predictor
+  horizon_minutes: [5, 10]
+
+alerts:
+  congestion_warning_queue: 4
+  congestion_high_queue: 8
+  congestion_watch_queue: 3
+
+database:
+  snapshot_interval_seconds: 10    # throttle persisted aggregate snapshots
+  trajectory_sampling_frames: 30   # persist a trajectory point every N frames
+  flush_interval_seconds: 2        # BackgroundWriter batch-commit cadence
+
+api:
+  host: 0.0.0.0
+  port: 8000
+  cors_origins:
+    - "*"

@@ -1,0 +1,1 @@
+"""Retail intelligence platform - see README.md for details."""

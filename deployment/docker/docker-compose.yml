@@ -1,0 +1,11 @@
+services:
+  retail:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///data/retail_intelligence.db
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./data:/app/data
+    command: ["python", "main.py", "--mode", "demo"]

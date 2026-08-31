@@ -1,0 +1,32 @@
+# Camera definitions. Each entry can be a webcam index, a video file or an RTSP URL.
+#
+# source types:
+#   - integer            -> webcam index (e.g. 0)
+#   - "file:///abs.mp4"  -> local video file (loops by default, see settings.video.loop)
+#   - "rtsp://user:pass@ip:554/stream" -> IP camera
+#
+# kind / protocol are metadata (used for logging and edge tuning only):
+#   kind: usb | file | rtsp | ip
+#
+# Reconnect behaviour is governed by settings.processing.*
+# zone_ids and shelf_ids reference keys defined in config/zones.json.
+
+cameras:
+  - id: store_01
+    name: "Store Entrance + Shop Floor"
+    source: 0                     # change to a video file / RTSP for real data
+    kind: usb
+    protocol: auto
+    enabled: true
+    zone_ids: [beverages, snacks, promotional, checkout_01, checkout_02]
+    shelf_ids: [shelf_a, shelf_b]
+
+  # Example RTSP camera (uncomment & fill in your credentials):
+  # - id: store_02
+  #   name: "Checkout Lanes"
+  #   source: rtsp://user:pass@192.168.1.50:554/Streaming/Channels/101
+  #   kind: rtsp
+  #   protocol: rtsp
+  #   enabled: true
+  #   zone_ids: [checkout_01, checkout_02]
+  #   shelf_ids: []

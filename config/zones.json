@@ -1,0 +1,28 @@
+{
+  "store_01": {
+    "entrance_line": {"start": [580, 55], "end": [700, 55]},
+    "zones": {
+      "beverages": {"zone_type": "shopping_zone", "polygon": [[410, 230], [690, 230], [690, 430], [410, 430]]},
+      "snacks": {"zone_type": "shopping_zone", "polygon": [[770, 230], [1040, 230], [1040, 430], [770, 430]]},
+      "promotional": {"zone_type": "shopping_zone", "polygon": [[470, 480], [840, 480], [840, 600], [470, 600]]},
+      "checkout_01": {"zone_type": "queue_zone", "polygon": [[1100, 320], [1270, 320], [1270, 700], [1100, 700]]},
+      "checkout_02": {"zone_type": "queue_zone", "polygon": [[160, 520], [330, 520], [330, 700], [160, 700]]}
+    },
+    "shelves": {
+      "shelf_a": {
+        "region": {"polygon": [[410, 230], [690, 230], [690, 430], [410, 430]]},
+        "expected_item_count": 14,
+        "category": "beverages"
+      },
+      "shelf_b": {
+        "region": {"polygon": [[770, 230], [1040, 230], [1040, 430], [770, 430]]},
+        "expected_item_count": 14,
+        "category": "snacks"
+      }
+    },
+    "planogram": {
+      "shelf_a": {"category": "beverages", "expected_columns": 3, "expected_rows": 4},
+      "shelf_b": {"category": "snacks", "expected_columns": 3, "expected_rows": 4}
+    }
+  }
+}
