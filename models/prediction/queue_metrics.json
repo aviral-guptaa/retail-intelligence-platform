@@ -9,15 +9,22 @@
       "horizon_minutes": 5,
       "model_path": "models/prediction/queue_model_5min.joblib",
       "model": "GradientBoostingRegressor",
-      "cv_mae_forward_chain": 0.4926,
-      "holdout_r2": -0.1563,
-      "holdout_mae": 0.4366,
-      "holdout_rmse": 0.5682,
+      "cv_mae_forward_chain": 0.4918,
+      "holdout_r2": -0.1223,
+      "holdout_mae": 0.4326,
+      "holdout_rmse": 0.5598,
+      "baseline_persistence_mae": 0.5146,
+      "baseline_persistence_rmse": 0.6758,
+      "baseline_persistence_r2": -0.6357,
+      "baseline_mean_mae": 0.3928,
+      "baseline_mean_rmse": 0.5322,
+      "beats_persistence": true,
+      "beats_mean": false,
       "blend_weight": 0.95,
-      "blend_mae": 0.4337,
+      "blend_mae": 0.4239,
       "confidence_interval_80": [
-        -0.751,
-        0.562
+        -0.716,
+        0.561
       ],
       "n_calibration": 1708,
       "n_holdout": 732,
@@ -25,27 +32,38 @@
         "queue_now",
         "mean5",
         "mean10",
+        "mean30",
+        "std10",
+        "queue_delta",
         "growth_rate",
         "footfall",
+        "footfall_rate",
         "hour",
         "dow",
         "open_counters"
       ],
-      "trained_at": "2026-09-01T12:31:03"
+      "trained_at": "2026-09-01T13:09:42"
     },
     {
       "horizon_minutes": 10,
       "model_path": "models/prediction/queue_model_10min.joblib",
       "model": "RandomForestRegressor",
-      "cv_mae_forward_chain": 0.5388,
-      "holdout_r2": -0.1054,
-      "holdout_mae": 0.4168,
-      "holdout_rmse": 0.5626,
+      "cv_mae_forward_chain": 0.5209,
+      "holdout_r2": -0.0509,
+      "holdout_mae": 0.4137,
+      "holdout_rmse": 0.5486,
+      "baseline_persistence_mae": 0.5675,
+      "baseline_persistence_rmse": 0.7439,
+      "baseline_persistence_r2": -0.9323,
+      "baseline_mean_mae": 0.4016,
+      "baseline_mean_rmse": 0.5405,
+      "beats_persistence": true,
+      "beats_mean": false,
       "blend_weight": 1.0,
-      "blend_mae": 0.4168,
+      "blend_mae": 0.4137,
       "confidence_interval_80": [
-        -0.568,
-        0.772
+        -0.572,
+        0.712
       ],
       "n_calibration": 1708,
       "n_holdout": 732,
@@ -53,13 +71,17 @@
         "queue_now",
         "mean5",
         "mean10",
+        "mean30",
+        "std10",
+        "queue_delta",
         "growth_rate",
         "footfall",
+        "footfall_rate",
         "hour",
         "dow",
         "open_counters"
       ],
-      "trained_at": "2026-09-01T12:31:05"
+      "trained_at": "2026-09-01T13:09:45"
     }
   ],
   "n_samples": 2440,
@@ -69,12 +91,16 @@
     "queue_now",
     "mean5",
     "mean10",
+    "mean30",
+    "std10",
+    "queue_delta",
     "growth_rate",
     "footfall",
+    "footfall_rate",
     "hour",
     "dow",
     "open_counters"
   ],
   "validation": "walk-forward/expand-window time-series (no shuffle)",
-  "trained_at": "2026-09-01T12:31:05"
+  "trained_at": "2026-09-01T13:09:45"
 }

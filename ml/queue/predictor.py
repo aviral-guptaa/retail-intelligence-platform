@@ -162,10 +162,13 @@ class QueuePredictor:
     @staticmethod
     def _feature_row(queue_history: List[Tuple[float, int]], footfall: int,
                      open_counters: int, now: float) -> np.ndarray:
-        """Build the model feature vector per the SIH spec.
+        """Build the model feature vector, matching scripts/train_queue_model.py.
 
-        [current_queue, mean_prev_5, mean_prev_10, growth_rate, footfall,
-         hour_of_day, day_of_week, open_counters]
+        Order: [queue_now, mean5, mean10, mean30, std10, queue_delta,
+                growth_rate, footfall, footfall_rate, hour, dow, open_counters].
+        Windows are over the trailing history *samples*, mirroring the rolling
+        windows in prepare_frame(). Means default to the current queue when too
+        few samples exist; std/delta default to 0.
         """
         vals = np.array([v for _, v in queue_history], dtype=float) if queue_history else np.zeros(1)
         current = float(vals[-1] if len(vals) else 0.0)
@@ -174,8 +177,12 @@ class QueuePredictor:
             growth = float(np.polyfit(np.arange(len(vals)), vals, 1)[0])  # per-sample trend
         mean5 = float(vals[-5:].mean()) if len(vals) else current
         mean10 = float(vals[-10:].mean()) if len(vals) else current
+        mean30 = float(vals[-30:].mean()) if len(vals) else current
+        std10 = float(vals[-10:].std(ddof=0)) if len(vals) >= 2 else 0.0
+        delta = float(current - vals[-10]) if len(vals) > 10 else 0.0
         ltm = time.localtime(now)
-        return np.array([current, mean5, mean10, growth, float(footfall),
+        return np.array([current, mean5, mean10, mean30, std10, delta,
+                         growth, float(footfall), float(footfall) / 60.0,
                          float(ltm.tm_hour), float(ltm.tm_wday), float(open_counters)])
 
     # ------------------------------------------------------------- inference

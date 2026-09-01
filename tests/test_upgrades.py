@@ -366,3 +366,36 @@ def test_yolo_detector_picks_onnx_backend_for_onnx_path(tmp_path):
     # backend stays "none". Either way detect/predict never crash.
     assert det.detect(None) == []
     assert det.predict(None) is None
+
+
+# ------------------------------------------------------------------ training: baselines + feature parity
+def test_queue_metrics_include_baselines():
+    """Training must record honest baselines (persistence/mean) so the model's
+    skill can be judged against 'predict the same queue' rather than bare R2."""
+    mp = Path("models/prediction/queue_metrics.json")
+    if not mp.exists():
+        pytest.skip("no queue_metrics.json in this checkout")
+    import json
+    d = json.loads(mp.read_text())
+    assert d["models"]
+    for m in d["models"]:
+        assert "baseline_persistence_mae" in m
+        assert "baseline_persistence_r2" in m
+        assert "baseline_mean_mae" in m
+        assert "beats_persistence" in m
+    five = [m for m in d["models"] if m["horizon_minutes"] == 5][0]
+    assert five["holdout_mae"] <= five["baseline_persistence_mae"] or five["beats_persistence"]
+
+
+def test_predictor_feature_row_matches_training_features():
+    """The runtime feature vector must align with the FEATURES list the models
+    were trained on, and be the documented length, or predictions drift."""
+    import scripts.train_queue_model as t
+    from ml.queue.predictor import QueuePredictor
+    assert len(t.FEATURES) == 12
+    pr = QueuePredictor({"horizon_minutes": [5, 10],
+                         "model_path": "models/prediction/does_not_exist.joblib"}, {})
+    series = [(t * 10.0, int(round(t / 40))) for t in range(0, 600, 10)]
+    row = pr._feature_row(series, footfall=10, open_counters=3, now=series[-1][0])
+    assert len(row) == len(t.FEATURES)
+    assert all(np.isfinite(row))

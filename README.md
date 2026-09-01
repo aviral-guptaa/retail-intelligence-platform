@@ -131,9 +131,11 @@ Example snapshot (section 13 event shape):
 ```bash
 # Queue-length predictor: a SEPARATE model per forecast horizon, each tuned
 # between RandomForest vs GradientBoosting via forward-chaining cross-val
-# (no shuffling - respects the temporal order). Validation also picks the
-# per-horizon blend weight and derives an 80% prediction interval from held-out
-# residual quantiles.
+# (no shuffling - respects the temporal order). Training also records honest
+# baselines (persistence = "queue stays the same", naive mean) and a per-horizon
+# blend weight + 80% CI, so the model is judged against what "no model" would do
+# rather than a bare R² (which is naturally weak on noisy short-horizon queue
+# data even for a good model).
 # Synthetic mode (no data): produce a demo model quickly.
 python scripts/train_queue_model.py --samples 2000
 
@@ -171,7 +173,10 @@ Runtime accuracy is tracked live by `ml/queue/evaluator.py`: each forecast is
 resolved against the actual queue once the horizon elapses and MAE/RMSE per
 horizon are written to `prediction.eval_path`
 (`data/processed/prediction_eval.csv`) and surfaced via
-`/api/health -> prediction_monitoring`.
+`/api/health -> prediction_monitoring`. The runtime predictor builds the same
+12-feature vector the models were trained on (see
+`QueuePredictor._feature_row`), so deployed predictions stay aligned with
+training.
 
 Shelf snapshots are temporally smoothed: a status change (e.g. to LOW or OUT)
 is only *committed* after `confirmation_polls` consecutive consistent polls, and
@@ -184,12 +189,13 @@ each shelf carries a depletion `trend`, `est_time_to_out_minutes` and
 python -m pytest tests/ -q
 ```
 
-42 tests cover geometry, tracking id stability, entry/exit + cooldown,
+44 tests cover geometry, tracking id stability, entry/exit + cooldown,
 occupancy, dwell, heatmap decay + export, queue counter + predictor source
-labels + per-horizon models/CI/blend weight, the runtime prediction evaluator,
-shelf classification + confirmation/depletion, the YOLO ONNX/fallback backends,
-the background DB writer, CameraSource (reconnect/loop/fps-cap), zones parsing
-and the API snapshot contract. API tests need `httpx2` (skip cleanly otherwise).
+labels + per-horizon models/CI/blend weight + training baselines/feature parity,
+the runtime prediction evaluator, shelf classification + confirmation/depletion,
+the YOLO ONNX/fallback backends, the background DB writer, CameraSource
+(reconnect/loop/fps-cap), zones parsing and the API snapshot contract. API
+tests need `httpx2` (skip cleanly otherwise).
 
 ## What needs real-world data / calibration
 

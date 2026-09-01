@@ -113,8 +113,12 @@ def simulate_queue_series(n_steps: int, seed: int = 7,
         "queue_now": q,
         "mean5": pd.Series(q).rolling(5, min_periods=1).mean().values,
         "mean10": pd.Series(q).rolling(10, min_periods=1).mean().values,
+        "mean30": pd.Series(q).rolling(30, min_periods=1).mean().values,
+        "std10": pd.Series(q).rolling(10, min_periods=1).std(ddof=0).fillna(0).values,
+        "queue_delta": pd.Series(q).diff(10).fillna(0).values,
         "growth_rate": np.gradient(q),
         "footfall": footfall,
+        "footfall_rate": footfall / 60.0,
         "hour": hour,
         "dow": dow,
         "open_counters": open_counters,
@@ -184,7 +188,13 @@ def prepare_frame(df: pd.DataFrame, horizons_min=DEFAULT_HORIZONS_MIN,
     q = df["queue_now"]
     df["mean5"] = q.rolling(5, min_periods=1).mean()
     df["mean10"] = q.rolling(10, min_periods=1).mean()
+    df["mean30"] = q.rolling(30, min_periods=1).mean()
+    df["std10"] = q.rolling(10, min_periods=1).std(ddof=0).fillna(0)
+    df["queue_delta"] = q.diff(10).fillna(0)
     df["growth_rate"] = np.gradient(q.to_numpy(dtype=float))
+    if "footfall" not in df.columns:
+        df["footfall"] = 0
+    df["footfall_rate"] = df["footfall"].to_numpy(dtype=float) / 60.0
     if "hour" not in df.columns:
         dt = pd.to_datetime(df["ts"], unit="s")
         df["hour"] = dt.dt.hour
@@ -197,15 +207,17 @@ def prepare_frame(df: pd.DataFrame, horizons_min=DEFAULT_HORIZONS_MIN,
         df[f"lin_{h}min"] = _rolling_linear_forecast(q.to_numpy(dtype=float), horizon_samples)
     target_cols = [f"target_{h}min" for h in horizons_min]
     use = ["ts", "camera_id", "queue_id", "queue_now", "mean5", "mean10",
-           "growth_rate", "footfall", "hour", "dow", "open_counters"] \
+           "mean30", "std10", "queue_delta", "growth_rate", "footfall",
+           "footfall_rate", "hour", "dow", "open_counters"] \
         + [f"lin_{h}min" for h in horizons_min] + target_cols
     df = df[[c for c in use if c in df.columns]]
     df = df.dropna(subset=["queue_now"] + target_cols)
     return df
 
 
-FEATURES = ["queue_now", "mean5", "mean10", "growth_rate", "footfall",
-            "hour", "dow", "open_counters"]
+FEATURES = ["queue_now", "mean5", "mean10", "mean30", "std10", "queue_delta",
+            "growth_rate", "footfall", "footfall_rate", "hour", "dow",
+            "open_counters"]
 
 
 def _expand_window_cv(X, y, n_splits=4):
@@ -304,6 +316,18 @@ def fit_model_for_horizon(df_cal, df_hold, h_min, out_dir, sample_interval=5.0):
     rmse = float(np.sqrt(mean_squared_error(yh, pred_hold)))
     r2 = float(r2_score(yh, pred_hold))
 
+    # Baselines so the model's skill is judged against what "no model" would do.
+    #   persistence -> predict the CURRENT queue for every horizon (a strong,
+    #                  hard-to-beat baseline for short horizons).
+    #   naive_mean  -> predict the calibration mean (the reference R2 uses).
+    pers_pred = df_hold["queue_now"].to_numpy(dtype=float)
+    pers_mae = float(mean_absolute_error(yh, pers_pred))
+    pers_rmse = float(np.sqrt(mean_squared_error(yh, pers_pred)))
+    pers_r2 = float(r2_score(yh, pers_pred))
+    mean_pred = np.full_like(yh, float(yc.mean()))
+    mean_mae = float(mean_absolute_error(yh, mean_pred))
+    mean_rmse = float(np.sqrt(mean_squared_error(yh, mean_pred)))
+
     # Validation-selected blend weight between ML and the bounded linear trend.
     blend_w, blend_mae = _optimal_blend_weight(pred_hold, trend_h, yh)
 
@@ -322,6 +346,13 @@ def fit_model_for_horizon(df_cal, df_hold, h_min, out_dir, sample_interval=5.0):
         "holdout_r2": round(r2, 4),
         "holdout_mae": round(mae, 4),
         "holdout_rmse": round(rmse, 4),
+        "baseline_persistence_mae": round(pers_mae, 4),
+        "baseline_persistence_rmse": round(pers_rmse, 4),
+        "baseline_persistence_r2": round(pers_r2, 4),
+        "baseline_mean_mae": round(mean_mae, 4),
+        "baseline_mean_rmse": round(mean_rmse, 4),
+        "beats_persistence": bool(rmse < pers_rmse),
+        "beats_mean": bool(mae < mean_mae),
         "blend_weight": round(blend_w, 4),
         "blend_mae": round(blend_mae, 4),
         "confidence_interval_80": [round(lo80, 3), round(hi80, 3)],
@@ -352,9 +383,12 @@ def train_all(df, source_label: str, out_dir: Path, horizons_min,
             return 1
         models.append(result)
         logging.info("[%dmin] model=%s holdout MAE=%.3f RMSE=%.3f R2=%.3f "
+                     "persistence_MAE=%.3f beats_persistence=%s "
                      "blend_w=%.3f 80%%CI=[%.2f,%.2f]",
                      h, result["model"], result["holdout_mae"],
                      result["holdout_rmse"], result["holdout_r2"],
+                     result["baseline_persistence_mae"],
+                     result["beats_persistence"],
                      result["blend_weight"],
                      result["confidence_interval_80"][0],
                      result["confidence_interval_80"][1])
