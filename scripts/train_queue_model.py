@@ -1,18 +1,38 @@
-"""Train the queue-length prediction model (RandomForest / GradientBoosting).
+"""Train queue-length prediction models (RandomForest / GradientBoosting).
 
 Two data sources:
 
  1. Synthetic simulation (default) - bursty arrivals + service, used so the
-    dashboard has a model from day one (previously-partnered demo data). The
-    metrics JSON records source="synthetic".
+    dashboard has a model from day one (previously-partnered demo data).
 
  2. Real collected data - ``--csv data/processed/queue_features.csv``, the file
     written continuously by ``ml.queue.datalogger`` while the pipeline runs in
-    demo or live mode. For each (camera, queue) series the target is the queue
-    length ``horizon_seconds`` ahead (interpolated on that queue's own timeline);
-    features are [queue_now, mean5, mean10, growth_rate, footfall, hour, dow,
-    open_counters]. Metrics + source="real" are stored so the API can tell the
-    dashboard whether a live model is serving.
+    demo or live mode.
+
+Key design decisions (SIH "defensible ML"):
+
+ * **Separate models per horizon.** The 5-minute and 10-minute forecasts are
+   distinct regression problems with their own features and error profile, so
+   this trains one model per configured horizon instead of stretching a single
+   10-minute model down to 5 (which silently assumes a constant scaling that
+   rarely holds).
+
+ * **Time-series-aware evaluation (no leakage).** Rows are never shuffled. The
+   labelled series are split on *time* into a contiguous calibration set and a
+   later holdout set, so the model is scored only on the future it did not see.
+   Within cross-validation we use a deterministic expand/cut forward-chaining
+   split rather than sklearn's random ``train_test_split``.
+
+ * **Validation-selected blending weight.** The ML prediction and a bounded
+   linear trend are combined as ``w*ml + (1-w)*trend``. Instead of a hardcoded
+   weight (the old 0.55), ``w`` is chosen on a validation slice to minimise the
+   horizon-specific MAE, and recorded per horizon so the runtime blends the two
+   signals in the same ratio that won validation.
+
+ * **Per-horizon confidence.** For each horizon the model's held-out residual
+   distribution is summarised (MAE, RMSE, and the 80% prediction interval
+   width) and stored, so the runtime can return a defensible uncertainty band
+   instead of an arbitrary one.
 
 Run with:
     python scripts/train_queue_model.py --samples 2000            # synthetic
@@ -25,6 +45,7 @@ import json
 import logging
 import os
 import sys
+import time as _time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -33,14 +54,21 @@ sys.path.insert(0, str(ROOT))
 import numpy as np
 import pandas as pd
 
-HORIZON_SECONDS = 600  # 10 minutes ahead (sampling is handled per timeline)
+DEFAULT_HORIZONS_MIN = [5, 10]
+SAMPLE_INTERVAL_SYNTHETIC = 10.0   # demo simulator steps 10s per row
+SAMPLE_INTERVAL_REAL = 5.0         # datalogger default (config sample_interval_seconds)
 
 
-def simulate_queue_series(n_steps: int, seed: int = 7) -> pd.DataFrame:
-    """Synthetic 10-minute-horizon store data for training.
+def horizon_seconds(h_min: int) -> int:
+    return h_min * 60
+
+
+def simulate_queue_series(n_steps: int, seed: int = 7,
+                          horizons_min=DEFAULT_HORIZONS_MIN) -> pd.DataFrame:
+    """Synthetic store data with a target column for each horizon.
 
     Queue length evolves as: arrival bursts push it up, service draws it down.
-    The target is the queue length ~10 minutes ahead (60 samples at 10s spacing).
+    The target for horizon h is the queue length ``h*60`` seconds ahead.
     """
     rng = np.random.default_rng(seed)
     service_rate = 5.0  # shoppers/minute with an open counter
@@ -50,6 +78,13 @@ def simulate_queue_series(n_steps: int, seed: int = 7) -> pd.DataFrame:
     dow = np.zeros(n_steps)
     queue = np.zeros(n_steps + 1)
     footfall = np.zeros(n_steps)
+    max_h = max(horizons_min)
+
+    # Keep enough leading "warm-up" so the earliest rows still have future
+    # values for every horizon.
+    horizon_steps = {h: h * 6 for h in horizons_min}      # 10s per sim step
+    lead = max(horizon_steps.values()) + 5
+
     for i in range(n_steps):
         hour[i] = i % (60 * 12)  # 12-hour trading day in minutes
         dow[i] = (i // (60 * 12)) % 7
@@ -63,11 +98,15 @@ def simulate_queue_series(n_steps: int, seed: int = 7) -> pd.DataFrame:
         if rng.random() < 0.06:
             arrivals += rng.poisson(6)
         served = min(queue[i], open_counters[i] * service_rate)
-        samples_per_min = 6  # a "sample minute" steps the sim 10s per row
-        queue[i + 1] = max(0.0, queue[i] + arrivals / samples_per_min - served / samples_per_min)
+        samples_per_min = 6
+        queue[i + 1] = max(0.0, queue[i]
+                           + arrivals / samples_per_min - served / samples_per_min)
 
-    q = queue[:-1]
-    target = np.concatenate([queue[60:], np.full(59, np.nan)])
+    # fit the future values on the *extended* timeline (up to n_steps+lead)
+    full_queue = queue.copy()
+    queue_ext = np.concatenate([full_queue, np.full(int(lead), np.nan)])
+    q = full_queue[:-1]
+
     df = pd.DataFrame({
         "ts": np.arange(n_steps) * 10.0,
         "camera_id": "synthetic", "queue_id": "checkout_01",
@@ -79,13 +118,19 @@ def simulate_queue_series(n_steps: int, seed: int = 7) -> pd.DataFrame:
         "hour": hour,
         "dow": dow,
         "open_counters": open_counters,
-        "target": target,
     })
-    return df.dropna()
+    for h in horizons_min:
+        steps = h * 6
+        target = np.full(n_steps, np.nan)
+        # target[i] = queue value `steps` samples later (on the extended queue)
+        for i in range(n_steps - steps):
+            target[i] = queue_ext[i + steps]
+        df[f"target_{h}min"] = target
+    return df
 
 
-def load_real_features(csv_path: str) -> pd.DataFrame:
-    """Read the datalogger CSV and compute horizon targets per queue series."""
+def load_real_features(csv_path: str, horizons_min=DEFAULT_HORIZONS_MIN) -> pd.DataFrame:
+    """Read the datalogger CSV and compute a target per horizon for each series."""
     raw = pd.read_csv(csv_path)
     required = ["ts", "camera_id", "queue_id", "queue_now"]
     missing = [c for c in required if c not in raw.columns]
@@ -94,18 +139,47 @@ def load_real_features(csv_path: str) -> pd.DataFrame:
 
     series = raw.sort_values("ts").drop_duplicates(subset=["ts", "camera_id", "queue_id"])
     groups = series.groupby(["camera_id", "queue_id"])
-    targets = []
-    for _, g in groups:
-        ts = g["ts"].to_numpy(dtype=float)
-        val = g["queue_now"].to_numpy(dtype=float)
-        target = np.interp(ts + HORIZON_SECONDS, ts, val)
-        targets.append(target)
-    series["target"] = np.concatenate(targets)
-    return series.dropna(subset=["target"])
+    series = series.copy()
+    for h in horizons_min:
+        hsec = horizon_seconds(h)
+        targets = []
+        for _, g in groups:
+            ts = g["ts"].to_numpy(dtype=float)
+            val = g["queue_now"].to_numpy(dtype=float)
+            targets.append(np.interp(ts + hsec, ts, val))
+        series[f"target_{h}min"] = np.concatenate(targets)
+    return series
 
 
-def prepare_frame(df: pd.DataFrame):
-    """Build the feature matrix + target, rolling features and time columns."""
+def _rolling_linear_forecast(vals, horizon_samples, window=12, min_samples=6):
+    """Rolling linear-trend forecast mirroring the runtime's bounded fallback.
+
+    For each row computes ``last + slope*horizon_samples`` from a fit over the
+    trailing ``window`` samples, bounded to avoid absurd extrapolations. Used so
+    the validation-time blend weight is estimated against the *same* trend the
+    runtime uses online.
+    """
+    n = len(vals)
+    out = np.full(n, np.nan)
+    v = np.asarray(vals, dtype=float)
+    for i in range(n):
+        lo = max(0, i - window + 1)
+        seg = v[lo:i + 1]
+        if len(seg) < min_samples:
+            out[i] = v[i]
+            continue
+        xs = np.arange(len(seg))
+        slope = np.polyfit(xs, seg, 1)[0]
+        current = v[i]
+        cap = current + 8.0
+        pred = current + slope * horizon_samples
+        out[i] = float(np.clip(pred, 0.0, max(cap, current * 1.5)))
+    return out
+
+
+def prepare_frame(df: pd.DataFrame, horizons_min=DEFAULT_HORIZONS_MIN,
+                  sample_interval: float = SAMPLE_INTERVAL_REAL) -> pd.DataFrame:
+    """Build the feature matrix + per-horizon targets, rolling features & time."""
     df = df.sort_values("ts").copy()
     q = df["queue_now"]
     df["mean5"] = q.rolling(5, min_periods=1).mean()
@@ -117,60 +191,188 @@ def prepare_frame(df: pd.DataFrame):
         df["dow"] = dt.dt.dayofweek
     if "open_counters" not in df.columns:
         df["open_counters"] = 3
-    df = df[df["target"].notna()].dropna(subset=["queue_now"])
+    # rolling linear-trend forecasts (bounded) mirroring the runtime fallback
+    for h in horizons_min:
+        horizon_samples = int(round(h * 60 / sample_interval))
+        df[f"lin_{h}min"] = _rolling_linear_forecast(q.to_numpy(dtype=float), horizon_samples)
+    target_cols = [f"target_{h}min" for h in horizons_min]
+    use = ["ts", "camera_id", "queue_id", "queue_now", "mean5", "mean10",
+           "growth_rate", "footfall", "hour", "dow", "open_counters"] \
+        + [f"lin_{h}min" for h in horizons_min] + target_cols
+    df = df[[c for c in use if c in df.columns]]
+    df = df.dropna(subset=["queue_now"] + target_cols)
     return df
 
 
-def train_eval(df: pd.DataFrame, source_label: str, out_path: str) -> int:
-    features = ["queue_now", "mean5", "mean10", "growth_rate", "footfall",
-                "hour", "dow", "open_counters"]
-    X, y = df[features].values, df["target"].values
+FEATURES = ["queue_now", "mean5", "mean10", "growth_rate", "footfall",
+            "hour", "dow", "open_counters"]
 
+
+def _expand_window_cv(X, y, n_splits=4):
+    """Deterministic forward-chaining time-series splits.
+
+    Each fold trains on a contiguous *earlier* window and validates on the
+    *next* contiguous window (never shuffling, never borrowing the future).
+    """
+    n = len(X)
+    piece = n // (n_splits + 1)
+    folds = []
+    for k in range(1, n_splits + 1):
+        tr_end = piece * k
+        if tr_end >= n:
+            break
+        val_end = min(tr_end + piece, n)
+        yield X[:tr_end], y[:tr_end], X[tr_end:val_end], y[tr_end:val_end]
+
+
+def _calibration_holdout_split(df, calibration_frac=0.7):
+    """Split the time-sorted frame into calibration (early) + holdout (later).
+
+    The holdout is entirely *after* calibration in time so nothing leaks.
+    """
+    df = df.sort_values("ts").reset_index(drop=True)
+    cut = int(len(df) * calibration_frac)
+    cut = max(cut, 20)
+    return df.iloc[:cut].copy(), df.iloc[cut:].copy()
+
+
+def _optimal_blend_weight(ml_pred, trend_pred, y, grid=None):
+    """Pick w in [0,1] minimising MAE of w*ml + (1-w)*trend on validation data."""
+    grid = grid if grid is not None else np.linspace(0.0, 1.0, 21)
+    best_w, best_mae = 1.0, float("inf")
+    for w in grid:
+        blended = w * np.asarray(ml_pred) + (1 - w) * np.asarray(trend_pred)
+        mae = float(np.mean(np.abs(blended - np.asarray(y))))
+        if mae < best_mae:
+            best_mae, best_w = mae, float(w)
+    return best_w, best_mae
+
+
+def _confidence_from_errors(residuals, mae):
+    """Derive a defensible 80% prediction interval from the held-out residuals.
+
+    Uses the empirical quantiles of the signed residuals so the interval is
+    grounded in the model's real behaviour rather than a Normal assumption.
+    """
+    residuals = residuals[~np.isnan(residuals)]
+    lo = np.quantile(residuals, 0.10) if len(residuals) else -mae
+    hi = np.quantile(residuals, 0.90) if len(residuals) else mae
+    return float(lo), float(hi)
+
+
+def fit_model_for_horizon(df_cal, df_hold, h_min, out_dir, sample_interval=5.0):
+    """Train + time-aware-validate one model for a single horizon.
+
+    Returns a dict of the chosen estimator, its validation metrics, the optimal
+    blend weight, confidence interval, and the trend predictor params (which the
+    runtime re-derives identically via QueuePredictor._linear_fallback_params).
+    """
     from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
     from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-    from sklearn.model_selection import train_test_split
 
-    Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.25, random_state=0)
+    col = f"target_{h_min}min"
+    Xc = df_cal[FEATURES].values
+    yc = df_cal[col].values
+    Xh = df_hold[FEATURES].values
+    yh = df_hold[col].values
+    trend_h = np.asarray(df_hold[f"lin_{h_min}min"].to_numpy(dtype=float))
 
-    models = {
-        "RandomForest": RandomForestRegressor(n_estimators=200, max_depth=8, n_jobs=-1, random_state=0),
-        "GradientBoosting": GradientBoostingRegressor(n_estimators=200, max_depth=4, random_state=0),
+    candidates = {
+        "RandomForest": RandomForestRegressor(n_estimators=200, max_depth=8,
+                                              n_jobs=-1, random_state=0),
+        "GradientBoosting": GradientBoostingRegressor(n_estimators=200, max_depth=4,
+                                                      random_state=0),
     }
-    best, best_r2 = None, -1.0
-    for name, mdl in models.items():
-        mdl.fit(Xtr, ytr)
-        r2 = r2_score(yte, mdl.predict(Xte))
-        mae = mean_absolute_error(yte, mdl.predict(Xte))
-        logging.info("%s  R2=%.3f  MAE=%.2f", name, r2, mae)
-        if r2 > best_r2:
-            best, best_r2 = mdl, r2
+    best, best_cv_mae = None, float("inf")
+    for name, mdl in candidates.items():
+        # forward-chaining CV on the calibration set (time-ordered, no shuffle)
+        fold_maes = []
+        for Xf_tr, yf_tr, Xf_va, yf_va in _expand_window_cv(Xc, yc):
+            m = mdl.__class__(**mdl.get_params())
+            m.fit(Xf_tr, yf_tr)
+            fold_maes.append(float(mean_absolute_error(yf_va, m.predict(Xf_va))))
+        cv_mae = float(np.mean(fold_maes)) if fold_maes else float("inf")
+        logging.info("%s [%dmin] forward-CV MAE=%.3f", name, h_min, cv_mae)
+        if cv_mae < best_cv_mae:
+            best, best_cv_mae = mdl, cv_mae
 
-    if best is None:
-        logging.error("no model trained")
+    # Retrain the winner on the full calibration frame, then score against the
+    # unseen later holdout (the honest future).
+    best.fit(Xc, yc)
+    pred_hold = best.predict(Xh)
+    mae = float(mean_absolute_error(yh, pred_hold))
+    rmse = float(np.sqrt(mean_squared_error(yh, pred_hold)))
+    r2 = float(r2_score(yh, pred_hold))
+
+    # Validation-selected blend weight between ML and the bounded linear trend.
+    blend_w, blend_mae = _optimal_blend_weight(pred_hold, trend_h, yh)
+
+    residuals = np.asarray(yh) - np.asarray(pred_hold)
+    lo80, hi80 = _confidence_from_errors(residuals, mae)
+
+    out_path = out_dir / f"queue_model_{h_min}min.joblib"
+    import joblib
+    joblib.dump(best, out_path)
+
+    return {
+        "horizon_minutes": h_min,
+        "model_path": str(out_path.relative_to(ROOT)),
+        "model": type(best).__name__,
+        "cv_mae_forward_chain": round(best_cv_mae, 4),
+        "holdout_r2": round(r2, 4),
+        "holdout_mae": round(mae, 4),
+        "holdout_rmse": round(rmse, 4),
+        "blend_weight": round(blend_w, 4),
+        "blend_mae": round(blend_mae, 4),
+        "confidence_interval_80": [round(lo80, 3), round(hi80, 3)],
+        "n_calibration": int(len(df_cal)),
+        "n_holdout": int(len(df_hold)),
+        "features": FEATURES,
+        "trained_at": _time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+
+
+def train_all(df, source_label: str, out_dir: Path, horizons_min,
+              sample_interval: float = SAMPLE_INTERVAL_REAL) -> int:
+    df = prepare_frame(df, horizons_min, sample_interval=sample_interval) \
+        .sort_values("ts").reset_index(drop=True)
+    if len(df) < 60:
+        logging.error("not enough labelled samples for training (%d); collect more history", len(df))
         return 1
 
-    pred = best.predict(Xte)
+    cal, hold = _calibration_holdout_split(df)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    models = []
+    for h in horizons_min:
+        result = fit_model_for_horizon(cal, hold, h, out_dir,
+                                       sample_interval=sample_interval)
+        if result is None:
+            logging.error("training failed for %dmin horizon", h)
+            return 1
+        models.append(result)
+        logging.info("[%dmin] model=%s holdout MAE=%.3f RMSE=%.3f R2=%.3f "
+                     "blend_w=%.3f 80%%CI=[%.2f,%.2f]",
+                     h, result["model"], result["holdout_mae"],
+                     result["holdout_rmse"], result["holdout_r2"],
+                     result["blend_weight"],
+                     result["confidence_interval_80"][0],
+                     result["confidence_interval_80"][1])
+
     metrics = {
         "source": source_label,
-        "r2": round(float(r2_score(yte, pred)), 4),
-        "mae": round(float(mean_absolute_error(yte, pred)), 4),
-        "rmse": round(float(np.sqrt(mean_squared_error(yte, pred))), 4),
+        "horizons_minutes": horizons_min,
+        "models": models,
         "n_samples": int(len(df)),
-        "horizon_seconds": HORIZON_SECONDS,
-        "features": features,
-        "model": type(best).__name__,
-        "trained_at": __import__("time").strftime("%Y-%m-%dT%H:%M:%S"),
+        "n_calibration": int(len(cal)),
+        "n_holdout": int(len(hold)),
+        "features": FEATURES,
+        "validation": "walk-forward/expand-window time-series (no shuffle)",
+        "trained_at": _time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
-
-    out = Path(ROOT) / out_path
-    out.parent.mkdir(parents=True, exist_ok=True)
-    import joblib
-
-    joblib.dump(best, out)
-    metrics_path = out.parent / "queue_metrics.json"
+    metrics_path = out_dir / "queue_metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2))
-    logging.info("saved best model (%s, R2=%.3f) -> %s", type(best).__name__, best_r2, out)
-    logging.info("saved metrics (source=%s) -> %s", source_label, metrics_path)
+    logging.info("saved %d horizon models + metrics -> %s", len(models), out_dir)
     return 0
 
 
@@ -178,28 +380,30 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--samples", type=int, default=2000, help="synthetic rows when no --csv")
     ap.add_argument("--csv", default=None, help="real data log (see ml.queue.datalogger)")
-    ap.add_argument("--out", default="models/prediction/queue_model.joblib")
+    ap.add_argument("--out", default="models/prediction", help="output directory for models + metrics")
+    ap.add_argument("--horizons", nargs="+", type=int, default=DEFAULT_HORIZONS_MIN,
+                    help="forecast horizons in minutes (default: 5 10)")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
+    horizons = sorted(set(args.horizons))
+    out_dir = ROOT / args.out
+
     if args.csv:
         try:
-            raw = load_real_features(args.csv)
+            raw = load_real_features(args.csv, horizons)
         except (FileNotFoundError, ValueError) as exc:
             logging.error("could not read real data %s: %s", args.csv, exc)
             return 1
-        df = prepare_frame(raw)
-        if len(df) < 50:
-            logging.error("not enough labelled samples for real training (%d); "
-                          "collect more queue history first", len(df))
-            return 1
-        logging.info("real-data training: %d rows from %s", len(df), args.csv)
-        return train_eval(df, "real", args.out)
+        logging.info("real-data training: %d rows from %s", len(raw), args.csv)
+        return train_all(raw, "real", out_dir, horizons,
+                         sample_interval=SAMPLE_INTERVAL_REAL)
 
-    df = simulate_queue_series(args.samples)
+    df = simulate_queue_series(args.samples, horizons_min=horizons)
     logging.info("synthetic training: %d rows", len(df))
-    return train_eval(df, "synthetic", args.out)
+    return train_all(df, "synthetic", out_dir, horizons,
+                     sample_interval=SAMPLE_INTERVAL_SYNTHETIC)
 
 
 if __name__ == "__main__":

@@ -66,11 +66,13 @@ queue:
   history_window: 60             # max time-series samples kept in memory
 
 prediction:
-  model_path: models/prediction/queue_model.joblib
-  metrics_path: models/prediction/queue_metrics.json   # MAE/RMSE/R2 + training source for the model
+  models_dir: models/prediction            # per-horizon queue_model_{N}min.joblib live here
+  metrics_path: models/prediction/queue_metrics.json   # MAE/RMSE/R2 + blend weight per horizon
   log_path: data/processed/queue_features.csv          # real-data collection log (train script reads this)
+  eval_path: data/processed/prediction_eval.csv        # runtime prediction-vs-actual log for monitoring
   fallback_window: 40            # samples used by the linear fallback predictor
   horizon_minutes: [5, 10]
+  # model_path kept for legacy single-file loaders; prefer models_dir above.
 
 alerts:
   congestion_warning_queue: 4

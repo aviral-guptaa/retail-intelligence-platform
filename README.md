@@ -129,7 +129,11 @@ Example snapshot (section 13 event shape):
 ## Training + models
 
 ```bash
-# Queue-length predictor (RandomForest vs GradientBoosting, keeps the best).
+# Queue-length predictor: a SEPARATE model per forecast horizon, each tuned
+# between RandomForest vs GradientBoosting via forward-chaining cross-val
+# (no shuffling - respects the temporal order). Validation also picks the
+# per-horizon blend weight and derives an 80% prediction interval from held-out
+# residual quantiles.
 # Synthetic mode (no data): produce a demo model quickly.
 python scripts/train_queue_model.py --samples 2000
 
@@ -138,7 +142,9 @@ python scripts/train_queue_model.py --samples 2000
 #       python main.py --mode live --source 0      # pipeline logs to data/processed/queue_features.csv
 #   - then train (per-queue timelines, target = queue length at horizon):
 #       python scripts/train_queue_model.py --csv data/processed/queue_features.csv --horizons 5 10
-#   Writes models/prediction/queue_model.joblib + queue_metrics.json (source=real).
+#   Writes models/prediction/queue_model_{N}min.joblib (one per horizon),
+#   plus queue_metrics.json (source=real) with per-horizon blend weights + CIs.
+#   (The legacy single-file queue_model.joblib is superseded; delete it.)
 
 # Shelf classifier (needs torch): ImageFolder training -> accuracy/F1 + .metrics.json
 python scripts/train_shelf_model.py --data data/shelf --epochs 10
@@ -155,8 +161,22 @@ python scripts/benchmark.py --mode demo --seconds 30
 `prediction.log_path` (default `data/processed/queue_features.csv`) is written
 by the live pipeline (see `ml/queue/datalogger.py`) whenever
 `prediction.log_path` config is set. The `QueuePredictor` reports its source:
-`model` = trained model only, `blend` = model with bounded linear-trend fallback,
-`fallback` = trend-only (no model file yet), so dashboards can label confidence.
+`model` = trained model only, `blend` = model with bounded linear-trend fallback
+using a validation-selected weight, `fallback` = trend-only (no model file yet).
+Every prediction also carries per-horizon `interval_{N}min` (80% CI), a normed
+`confidence` score, verbose `predicted_queue_length_{N}min` keys, and
+`explain_{N}min` factor dicts so the dashboard can show *why*.
+
+Runtime accuracy is tracked live by `ml/queue/evaluator.py`: each forecast is
+resolved against the actual queue once the horizon elapses and MAE/RMSE per
+horizon are written to `prediction.eval_path`
+(`data/processed/prediction_eval.csv`) and surfaced via
+`/api/health -> prediction_monitoring`.
+
+Shelf snapshots are temporally smoothed: a status change (e.g. to LOW or OUT)
+is only *committed* after `confirmation_polls` consecutive consistent polls, and
+each shelf carries a depletion `trend`, `est_time_to_out_minutes` and
+`stock_out_risk` derived from recent counts.
 
 ## Tests
 
@@ -164,11 +184,12 @@ by the live pipeline (see `ml/queue/datalogger.py`) whenever
 python -m pytest tests/ -q
 ```
 
-33 tests cover geometry, tracking id stability, entry/exit + cooldown,
+42 tests cover geometry, tracking id stability, entry/exit + cooldown,
 occupancy, dwell, heatmap decay + export, queue counter + predictor source
-labels, shelf classification, the background DB writer, CameraSource
-(reconnect/loop/fps-cap), zones parsing and the API snapshot contract.
-API tests need `httpx2` (skip cleanly otherwise).
+labels + per-horizon models/CI/blend weight, the runtime prediction evaluator,
+shelf classification + confirmation/depletion, the YOLO ONNX/fallback backends,
+the background DB writer, CameraSource (reconnect/loop/fps-cap), zones parsing
+and the API snapshot contract. API tests need `httpx2` (skip cleanly otherwise).
 
 ## What needs real-world data / calibration
 

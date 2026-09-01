@@ -1,0 +1,80 @@
+{
+  "source": "synthetic",
+  "horizons_minutes": [
+    5,
+    10
+  ],
+  "models": [
+    {
+      "horizon_minutes": 5,
+      "model_path": "models/prediction/queue_model_5min.joblib",
+      "model": "GradientBoostingRegressor",
+      "cv_mae_forward_chain": 0.4926,
+      "holdout_r2": -0.1563,
+      "holdout_mae": 0.4366,
+      "holdout_rmse": 0.5682,
+      "blend_weight": 0.95,
+      "blend_mae": 0.4337,
+      "confidence_interval_80": [
+        -0.751,
+        0.562
+      ],
+      "n_calibration": 1708,
+      "n_holdout": 732,
+      "features": [
+        "queue_now",
+        "mean5",
+        "mean10",
+        "growth_rate",
+        "footfall",
+        "hour",
+        "dow",
+        "open_counters"
+      ],
+      "trained_at": "2026-09-01T12:31:03"
+    },
+    {
+      "horizon_minutes": 10,
+      "model_path": "models/prediction/queue_model_10min.joblib",
+      "model": "RandomForestRegressor",
+      "cv_mae_forward_chain": 0.5388,
+      "holdout_r2": -0.1054,
+      "holdout_mae": 0.4168,
+      "holdout_rmse": 0.5626,
+      "blend_weight": 1.0,
+      "blend_mae": 0.4168,
+      "confidence_interval_80": [
+        -0.568,
+        0.772
+      ],
+      "n_calibration": 1708,
+      "n_holdout": 732,
+      "features": [
+        "queue_now",
+        "mean5",
+        "mean10",
+        "growth_rate",
+        "footfall",
+        "hour",
+        "dow",
+        "open_counters"
+      ],
+      "trained_at": "2026-09-01T12:31:05"
+    }
+  ],
+  "n_samples": 2440,
+  "n_calibration": 1708,
+  "n_holdout": 732,
+  "features": [
+    "queue_now",
+    "mean5",
+    "mean10",
+    "growth_rate",
+    "footfall",
+    "hour",
+    "dow",
+    "open_counters"
+  ],
+  "validation": "walk-forward/expand-window time-series (no shuffle)",
+  "trained_at": "2026-09-01T12:31:05"
+}

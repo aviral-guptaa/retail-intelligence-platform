@@ -47,7 +47,10 @@ def test_queue_counter_counts_and_histories():
 
 
 def test_predictor_linear_fallback_forecasts():
-    pr = QueuePredictor({"horizon_minutes": [5, 10]}, {})
+    # Point at a nonexistent model so the linear fallback is exercised
+    # deterministically regardless of any ambient model files on disk.
+    pr = QueuePredictor({"horizon_minutes": [5, 10],
+                         "model_path": "models/prediction/does_not_exist.joblib"}, {})
     series = [(t, int(round(t / 10))) for t in range(0, 600, 10)]  # growing queue
     preds = pr.predict(series, footfall=10, open_counters=3)
     assert preds["10min"] > preds["5min"] > 0

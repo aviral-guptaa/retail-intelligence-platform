@@ -223,3 +223,146 @@ def test_background_writer_persists_and_shuts_down(tmp_path):
     assert session.query(AnalyticsSnapshot).count() == 5
     assert session.query(AlertRecord).count() == 1
     session.close()
+
+
+# ------------------------------------------------------------------ predictor: real models
+def test_predictor_loads_per_horizon_models_and_blends(tmp_path):
+    """The predictor auto-discovers the per-horizon joblib files and reports
+    model/blend with intervals + confidence when trained models are present."""
+    if not (Path("models/prediction/queue_model_5min.joblib").exists()):
+        pytest.skip("no trained per-horizon models available in this checkout")
+    pr = QueuePredictor({"horizon_minutes": [5, 10]}, {})
+    assert any(m is not None for m in pr._models.values())
+    series = [(t, int(round(t / 40))) for t in range(0, 3000, 10)]
+    preds = pr.predict(series, footfall=10, open_counters=3)
+    assert preds["source"] in ("model", "blend")
+    assert preds["predicted_queue_length_5min"] == preds["5min"]
+    assert preds["predicted_queue_length_10min"] == preds["10min"]
+    # per-horizon explainability carries the linear-trend factor
+    for h in pr.horizons:
+        exp = preds[f"explain_{h}min"]
+        assert "linear_trend_value" in exp
+        assert "model_value" in exp
+        iv = preds[f"interval_{h}min"]
+        assert 0 <= iv["low"] <= iv["high"]
+    assert 0.0 <= preds["confidence"] <= 1.0
+
+
+def test_predictor_blend_weight_from_metrics_file():
+    """The blend weight is read per-horizon from the metrics file."""
+    if not Path("models/prediction/queue_metrics.json").exists():
+        pytest.skip("no queue_metrics.json in this checkout")
+    pr = QueuePredictor({"horizon_minutes": [5, 10]}, {})
+    w = pr._blend_weight_for(5)
+    assert 0.0 <= w <= 1.0
+
+
+def test_predictor_fallback_uses_default_blend_weight():
+    """Without a metrics file the neutral prior blend weight is used."""
+    pr = QueuePredictor({"horizon_minutes": [5, 10],
+                         "metrics_path": "models/prediction/missing_metrics.json",
+                         "model_path": "models/prediction/does_not_exist.joblib"}, {})
+    assert pr._blend_weight_for(5) == pytest.approx(0.55)
+
+
+# ------------------------------------------------------------------ prediction evaluator
+def test_prediction_evaluator_scores_ripe_samples(tmp_path):
+    from ml.queue.evaluator import QueuePredictionEvaluator
+
+    ev = QueuePredictionEvaluator(tmp_path / "eval.csv", horizons=[5])
+    # history that grows to match a prediction of 10 at t=600 (5min horizon)
+    hist = [(i * 10.0, float(i)) for i in range(65)]  # up to t=640
+    ev.record(made_ts=300.0, horizons_values={5: 30.0}, queue_history=hist, source="blend")
+    assert ev.metrics()["5min"]["samples"] == 0  # not ripe yet
+    ev.evaluate_ripe(now=300.0 + 5 * 60 + 1)     # just past the 5-min horizon
+    assert ev.metrics()["5min"]["samples"] == 1
+    m = ev.metrics()["5min"]
+    assert m["sources"].get("blend") == 1
+    assert m["mae"] >= 0.0
+    ev.close()
+    assert (tmp_path / "eval.csv").exists()
+
+
+def test_prediction_evaluator_skips_unresolvable(tmp_path):
+    from ml.queue.evaluator import QueuePredictionEvaluator
+
+    ev = QueuePredictionEvaluator(tmp_path / "eval2.csv", horizons=[5])
+    # history ends before the horizon -> cannot resolve an actual -> dropped
+    hist = [(i * 10.0, float(i)) for i in range(30)]  # only up to t=290
+    ev.record(made_ts=300.0, horizons_values={5: 10.0}, queue_history=hist, source="fallback")
+    ev.evaluate_ripe(now=300.0 + 5 * 60 + 1)
+    assert ev.metrics()["5min"]["samples"] == 0
+
+
+# ------------------------------------------------------------------ shelf: temporal smoothing + depletion
+def _shelf_dets(n):
+    return [Detection(5 + i * 3, 5, 5 + i * 3 + 6, 11, 0.9, 999, "product") for i in range(n)]
+
+
+def test_shelf_confirmation_requires_consecutive_polls():
+    from ml.shelf.shelf_classifier import OUT_OF_STOCK
+
+    shelves = {"a": {"region": [[0, 0], [40, 0], [40, 40], [0, 40]], "expected_item_count": 10}}
+    sc = ShelfClassifier(shelves, {"strategy": "detection", "confirmation_polls": 3,
+                                   "poll_interval_seconds": 0.001}, "c")
+    now = 1000.0
+    sc.update(None, _shelf_dets(10), now)          # FULL, first observation committed
+    assert sc.states["a"].confirmed is True
+    assert sc.states["a"].status != OUT_OF_STOCK
+
+    # a single low-count poll must NOT flip the state to LOW_STOCK
+    sc.update(None, _shelf_dets(2), now + 0.01)    # 2/10 = 0.2 -> LOW candidate
+    s = sc.states["a"]
+    assert s.status == "LOW_STOCK"
+    assert s.confirmed is False                    # provisional, not committed
+
+    # one more consistent poll is still not enough (needs 3 consecutive)
+    sc.update(None, _shelf_dets(2), now + 0.02)
+    assert sc.states["a"].confirmed is False
+
+    # the third consecutive consistent poll confirms the transition
+    sc.update(None, _shelf_dets(2), now + 0.03)
+    assert sc.states["a"].status == "LOW_STOCK"
+    assert sc.states["a"].confirmed is True
+
+
+def test_shelf_depletion_trend_and_time_to_out():
+    shelves = {"a": {"region": [[0, 0], [40, 0], [40, 40], [0, 40]], "expected_item_count": 10}}
+    sc = ShelfClassifier(shelves, {"strategy": "detection", "confirmation_polls": 2,
+                                   "poll_interval_seconds": 1.0}, "c")
+    now = 2000.0
+    sc.update(None, _shelf_dets(10), now)          # 10/10 FULL
+    sc.update(None, _shelf_dets(4), now + 1.0)     # 4/10 = 0.4 FULL
+    sc.update(None, _shelf_dets(2), now + 2.0)     # 2/10 = 0.2 LOW_STOCK
+    snap = sc.states["a"]
+    assert snap.trend < 0.0          # depleting
+    assert snap.est_time_to_out_minutes > 0.0
+    assert snap.stock_out_risk in ("LOW", "MEDIUM", "HIGH")
+    assert snap.status == "LOW_STOCK"
+
+
+# ------------------------------------------------------------------ yolo detector: onnx/fallback handling
+def test_yolo_detector_reports_backend_none_when_model_missing():
+    from ml.detection.yolo_detector import YoloDetector
+
+    det = YoloDetector({"yolo_model": "models/yolo/does_not_exist.pt"}, "c")
+    assert det.backend == "none"
+    assert det.is_onnx is False
+    assert det.uses_synthetic() is True  # no model + no session
+    assert det.detect(None) == []
+    assert det.predict(None) is None
+
+
+def test_yolo_detector_picks_onnx_backend_for_onnx_path(tmp_path):
+    """An .onnx path routes to the ONNX backend (or degrades cleanly when the
+    lib or file is missing - the contract is never a crash or a wrong backend)."""
+    from ml.detection.yolo_detector import YoloDetector
+
+    fake = tmp_path / "detector.onnx"
+    fake.write_bytes(b"not-a-real-onnx")
+    det = YoloDetector({"yolo_model": str(fake)}, "c")
+    assert det.is_onnx is False if det.backend == "none" else True
+    # If onnxruntime is present it will try to load and fail cleanly; otherwise
+    # backend stays "none". Either way detect/predict never crash.
+    assert det.detect(None) == []
+    assert det.predict(None) is None

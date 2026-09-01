@@ -18,6 +18,7 @@ from config.loader import resolve, load_zones
 from database.repository import Repository
 from ml.detection.yolo_detector import YoloDetector
 from ml.queue.datalogger import QueueDataLogger
+from ml.queue.evaluator import QueuePredictionEvaluator
 from ml.queue.predictor import QueuePredictor
 from ml.queue.queue_counter import QueueCounter
 from ml.queue.wait_time import WaitTimeEstimator
@@ -113,9 +114,13 @@ class AnalyticsService:
         self._heat_export_interval = float(zones_cfg.get("heatmap_export_interval_seconds", 60))
 
         queue_settings = settings.get("queue", {})
+        pred_settings = settings.get("prediction", {})
         self.queue = QueueCounter(self.queue_zones, queue_settings, camera_id)
         self.wait_time = WaitTimeEstimator(queue_settings)
-        self.predictor = QueuePredictor(settings.get("prediction", {}), queue_settings)
+        self.predictor = QueuePredictor(pred_settings, queue_settings)
+        self.pred_evaluator = QueuePredictionEvaluator(
+            pred_settings.get("eval_path", "data/processed/prediction_eval.csv"),
+            self.predictor.horizons, queue_id=camera_id)
 
         shelf_settings = settings.get("shelf", {})
         self.shelves = ShelfClassifier(
@@ -125,7 +130,6 @@ class AnalyticsService:
         self.planogram = PlanogramChecker(self.camera_cfg.get("planogram", {}))
 
         # ---- real-data + persistence ---------------------------------------
-        pred_settings = settings.get("prediction", {})
         self.data_logger = QueueDataLogger(
             pred_settings.get("log_path", "data/processed/queue_features.csv"),
             camera_id, self.queue_zones.keys(),
@@ -250,13 +254,21 @@ class AnalyticsService:
         per_queue: Dict[str, Dict[str, float]] = {}
         for qid in queue_counts:
             hist = self.queue.history().get(qid, [])
-            per_queue[qid] = self.predictor.predict(hist, footfall=footfall,
-                                                    open_counters=open_counters)
+            qpred = self.predictor.predict(hist, footfall=footfall,
+                                           open_counters=open_counters)
+            per_queue[qid] = qpred
+            # runtime monitoring: record (made at now) forecasts per horizon
+            horizon_vals = {h: float(qpred.get(f"{h}min", 0.0)) for h in self.predictor.horizons}
+            self.pred_evaluator.record(
+                time.time(), horizon_vals,
+                [(t, float(v)) for t, v in self.queue.history().get(qid, [])],
+                source=qpred.get("source", "fallback"))
+        self.pred_evaluator.evaluate_ripe(time.time())
 
         global_preds: Dict[str, float] = {}
         sources = set()
         for qp in per_queue.values():
-            src = qp.pop("source", "fallback")
+            src = qp.get("source", "fallback")
             sources.add(src)
             for k, v in qp.items():
                 if k in ("5min", "10min"):
@@ -281,6 +293,11 @@ class AnalyticsService:
         from app.services.alert_service import AlertService  # avoid import cycle
         status, rec = AlertService.assess(qtotal, global_preds, self.settings.get("alerts", {}))
         self._emit_alerts(status, rec, qtotal)
+
+        try:
+            rec_detail = self.predictor.explain_recommendation(global_preds, qtotal)
+        except Exception:
+            rec_detail = None
 
         queues_list = [
             {
@@ -320,6 +337,7 @@ class AnalyticsService:
                                      default=0.0),
                 "queues": queues_list,
                 "recommendation": rec,
+                "recommendation_detail": rec_detail,
                 "prediction_source": global_preds.get("source", "fallback"),
                 "history": {z: [[ts, n] for ts, n in samples]
                             for z, samples in self.queue.history().items()},
@@ -398,6 +416,7 @@ class AnalyticsService:
             "entries": self.footfall.total_entries,
             "exits": self.footfall.total_exits,
             "occupancy": self.line_counter.occupancy() if self.line_counter else len(self._last_tracks),
+            "prediction_monitoring": self.pred_evaluator.metrics(),
         }
 
     def shutdown(self) -> None:
@@ -405,6 +424,10 @@ class AnalyticsService:
             self.source.release()
         try:
             self.data_logger.close()
+        except Exception:
+            pass
+        try:
+            self.pred_evaluator.close()
         except Exception:
             pass
 

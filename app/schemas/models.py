@@ -106,6 +106,10 @@ class ShelfSnapshot:
     confidence: float
     ts: float = field(default_factory=time.time)
     source: str = "heuristic"    # classification | detection | heuristic
+    confirmed: bool = True       # True once a transition has survived multi-frame confirmation
+    stock_out_risk: str = "NONE"  # NONE | LOW | MEDIUM | HIGH
+    est_time_to_out_minutes: float = 0.0   # predicted minutes until OUT_OF_STOCK (0 = n/a)
+    trend: float = 0.0           # estimated depletion rate (items per poll interval, negative = losing stock)
 
     def to_dict(self) -> Dict:
         return {
@@ -116,4 +120,8 @@ class ShelfSnapshot:
             "confidence": round(self.confidence, 3),
             "ts": self.ts,
             "source": self.source,
+            "confirmed": self.confirmed,
+            "stock_out_risk": self.stock_out_risk,
+            "est_time_to_out_minutes": round(self.est_time_to_out_minutes, 1),
+            "trend": round(self.trend, 3),
         }
