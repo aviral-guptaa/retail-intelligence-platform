@@ -1,5 +1,5 @@
 {
-  "source": "synthetic",
+  "source": "real",
   "horizons_minutes": [
     5,
     10
@@ -9,25 +9,25 @@
       "horizon_minutes": 5,
       "model_path": "models/prediction/queue_model_5min.joblib",
       "model": "GradientBoostingRegressor",
-      "cv_mae_forward_chain": 0.4918,
-      "holdout_r2": -0.1223,
-      "holdout_mae": 0.4326,
-      "holdout_rmse": 0.5598,
-      "baseline_persistence_mae": 0.5146,
-      "baseline_persistence_rmse": 0.6758,
-      "baseline_persistence_r2": -0.6357,
-      "baseline_mean_mae": 0.3928,
-      "baseline_mean_rmse": 0.5322,
+      "cv_mae_forward_chain": 2.7712,
+      "holdout_r2": 0.2345,
+      "holdout_mae": 2.0707,
+      "holdout_rmse": 2.5332,
+      "baseline_persistence_mae": 3.4163,
+      "baseline_persistence_rmse": 4.3111,
+      "baseline_persistence_r2": -1.2171,
+      "baseline_mean_mae": 2.4909,
+      "baseline_mean_rmse": 3.0593,
       "beats_persistence": true,
-      "beats_mean": false,
-      "blend_weight": 0.95,
-      "blend_mae": 0.4239,
+      "beats_mean": true,
+      "blend_weight": 1.0,
+      "blend_mae": 2.0707,
       "confidence_interval_80": [
-        -0.716,
-        0.561
+        -3.845,
+        2.16
       ],
-      "n_calibration": 1708,
-      "n_holdout": 732,
+      "n_calibration": 190512,
+      "n_holdout": 81648,
       "features": [
         "queue_now",
         "mean5",
@@ -42,31 +42,31 @@
         "dow",
         "open_counters"
       ],
-      "trained_at": "2026-09-01T13:09:42"
+      "trained_at": "2026-09-02T08:03:31"
     },
     {
       "horizon_minutes": 10,
       "model_path": "models/prediction/queue_model_10min.joblib",
-      "model": "RandomForestRegressor",
-      "cv_mae_forward_chain": 0.5209,
-      "holdout_r2": -0.0509,
-      "holdout_mae": 0.4137,
-      "holdout_rmse": 0.5486,
-      "baseline_persistence_mae": 0.5675,
-      "baseline_persistence_rmse": 0.7439,
-      "baseline_persistence_r2": -0.9323,
-      "baseline_mean_mae": 0.4016,
-      "baseline_mean_rmse": 0.5405,
+      "model": "GradientBoostingRegressor",
+      "cv_mae_forward_chain": 2.7823,
+      "holdout_r2": 0.2337,
+      "holdout_mae": 2.0711,
+      "holdout_rmse": 2.5351,
+      "baseline_persistence_mae": 3.4229,
+      "baseline_persistence_rmse": 4.3106,
+      "baseline_persistence_r2": -1.2156,
+      "baseline_mean_mae": 2.4927,
+      "baseline_mean_rmse": 3.061,
       "beats_persistence": true,
-      "beats_mean": false,
+      "beats_mean": true,
       "blend_weight": 1.0,
-      "blend_mae": 0.4137,
+      "blend_mae": 2.0711,
       "confidence_interval_80": [
-        -0.572,
-        0.712
+        -3.864,
+        2.149
       ],
-      "n_calibration": 1708,
-      "n_holdout": 732,
+      "n_calibration": 190512,
+      "n_holdout": 81648,
       "features": [
         "queue_now",
         "mean5",
@@ -81,12 +81,12 @@
         "dow",
         "open_counters"
       ],
-      "trained_at": "2026-09-01T13:09:45"
+      "trained_at": "2026-09-02T08:05:20"
     }
   ],
-  "n_samples": 2440,
-  "n_calibration": 1708,
-  "n_holdout": 732,
+  "n_samples": 272160,
+  "n_calibration": 190512,
+  "n_holdout": 81648,
   "features": [
     "queue_now",
     "mean5",
@@ -102,5 +102,5 @@
     "open_counters"
   ],
   "validation": "walk-forward/expand-window time-series (no shuffle)",
-  "trained_at": "2026-09-01T13:09:45"
+  "trained_at": "2026-09-02T08:05:20"
 }

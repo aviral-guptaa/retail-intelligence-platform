@@ -295,16 +295,26 @@ def fit_model_for_horizon(df_cal, df_hold, h_min, out_dir, sample_interval=5.0):
         "GradientBoosting": GradientBoostingRegressor(n_estimators=200, max_depth=4,
                                                       random_state=0),
     }
+    # Model selection via walk-forward CV is done on a capped subsample of the
+    # calibration set (still contiguous/latest-in-time so it stays leak-free and
+    # representative); the final model is then fit on the FULL calibration set
+    # and scored on the unseen holdout. This keeps training tractable on large
+    # on-site datasets while preserving honest time-aware evaluation.
+    cv_cap = int(os.environ.get("QUEUE_CV_CAP", 30000))
+    Xc_cv = Xc[-cv_cap:] if len(Xc) > cv_cap else Xc
+    yc_cv = yc[-cv_cap:] if len(yc) > cv_cap else yc
+
     best, best_cv_mae = None, float("inf")
     for name, mdl in candidates.items():
         # forward-chaining CV on the calibration set (time-ordered, no shuffle)
         fold_maes = []
-        for Xf_tr, yf_tr, Xf_va, yf_va in _expand_window_cv(Xc, yc):
+        for Xf_tr, yf_tr, Xf_va, yf_va in _expand_window_cv(Xc_cv, yc_cv):
             m = mdl.__class__(**mdl.get_params())
             m.fit(Xf_tr, yf_tr)
             fold_maes.append(float(mean_absolute_error(yf_va, m.predict(Xf_va))))
         cv_mae = float(np.mean(fold_maes)) if fold_maes else float("inf")
-        logging.info("%s [%dmin] forward-CV MAE=%.3f", name, h_min, cv_mae)
+        logging.info("%s [%dmin] forward-CV MAE=%.3f (on %d rows)",
+                     name, h_min, cv_mae, len(Xc_cv))
         if cv_mae < best_cv_mae:
             best, best_cv_mae = mdl, cv_mae
 

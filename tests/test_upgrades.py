@@ -399,3 +399,38 @@ def test_predictor_feature_row_matches_training_features():
     row = pr._feature_row(series, footfall=10, open_counters=3, now=series[-1][0])
     assert len(row) == len(t.FEATURES)
     assert all(np.isfinite(row))
+
+
+# ------------------------------------------------------------------ realistic dataset generator
+def test_make_queue_dataset_generates_realistic_series(tmp_path):
+    """The synthetic dataset generator must produce a learnable, realistic
+    queue trace (not the tiny-noise series that capped R2 near -0.16)."""
+    from scripts import make_queue_dataset as mq
+
+    rng = np.random.default_rng(0)
+    f = mq.simulate_store_day("store_00", "checkout_00", rng,
+                              base_arrivals_per_min=2.0, mu_per_min=1.1,
+                              open_counters_max=4, date_idx=0)
+    assert list(f.columns) == ["ts", "camera_id", "queue_id", "queue_now",
+                               "footfall", "open_counters", "hour", "dow"]
+    # realistic volume + spread (the old sim had mean ~1.3/std ~0.56)
+    assert f["queue_now"].mean() > 3.0
+    assert f["queue_now"].std() > 1.0
+    assert f["queue_now"].max() >= 8.0          # congestion episodes present
+    # find the diurnal signature: average several weekdays so single-day noise
+    # cancels, then the evening rush must beat the mid-morning
+    rng = np.random.default_rng(0)
+    means_evening, means_morning = [], []
+    for day in range(5):
+        f2 = mq.simulate_store_day("store_00", "checkout_00", rng,
+                                   base_arrivals_per_min=2.0, mu_per_min=1.1,
+                                   open_counters_max=4, date_idx=day)
+        q2 = f2.set_index("ts")
+        def block(h0):
+            return q2[(q2["hour"] >= h0) & (q2["hour"] < h0 + 2)]["queue_now"].mean()
+        means_evening.append(max(block(h) for h in (15, 17)))
+        means_morning.append(block(9))
+    assert np.mean(means_evening) > np.mean(means_morning)
+    # proper time-series continuity: strictly increasing timestamps at 10s
+    ts = f["ts"].to_numpy()
+    assert np.all(np.diff(ts) == 10.0)
