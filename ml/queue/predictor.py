@@ -306,7 +306,7 @@ class QueuePredictor:
             val = queue_history[-1][1] if queue_history else 0.0
             return {f"{h}min": float(val) for h in self.horizons}
 
-        ts = np.array([s for _, s in queue_history], dtype=float)
+        ts = np.array([s for s, _ in queue_history], dtype=float)
         vals = np.array([v for _, v in queue_history], dtype=float)
         slope, intercept = np.polyfit(ts - ts[0], vals, 1)
         current = float(vals[-1])

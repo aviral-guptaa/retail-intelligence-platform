@@ -57,6 +57,34 @@ def test_predictor_linear_fallback_forecasts():
     assert "congestion" in pr.recommendation(preds, current_queue=6).lower()
 
 
+def test_predictor_linear_fallback_constant_queue_no_crash():
+    # Regression: a flat queue history used to produce identical x (queue length)
+    # for polyfit -> "SVD did not converge". Must not crash and must forecast
+    # sensibly. queue_history is [(ts, queue_len), ...].
+    pr = QueuePredictor({"horizon_minutes": [5, 10],
+                         "model_path": "models/prediction/does_not_exist.joblib"}, {})
+    series = [(t * 10.0, 5) for t in range(30)]  # constant queue of 5
+    preds = pr.predict(series, footfall=4, open_counters=2)
+    # constant queue -> should stay near 5, not explode
+    assert 0 < preds["5min"] <= 6
+    assert preds["10min"] >= preds["5min"]
+
+
+def test_predictor_linear_fallback_slope_uses_time_not_index():
+    # The slope must be fit against elapsed TIME so that sparse vs dense history
+    # yields the same per-minute growth. With the old swapped (queue,len) bug,
+    # growth came out ~1.0 per sample regardless of timestamp spacing.
+    pr = QueuePredictor({"horizon_minutes": [5, 10],
+                         "model_path": "models/prediction/does_not_exist.joblib"}, {})
+    # queue climbs 0->5 over 60 seconds (5 samples, 15s apart): 5/min growth? No:
+    # over 60s that is 5 per minute -> ~5/min, forecast 5-min ahead ~ +25 -> large.
+    series = [(t * 15.0, int(t)) for t in range(6)]  # 0,1,2,3,4,5 queue over 90s? last ts=75
+    preds = pr.predict(series, footfall=4, open_counters=2)
+    # growth = (5-0)/(75-0) per sec *60 = 4/min; monotonic in horizon
+    assert preds["10min"] > preds["5min"]
+
+
+
 def test_heatmap_accumulates_and_renders():
     hm = HeatmapAccumulator(100, 100, scale=4)
     hm.update([_track(20, 20, 1), _track(21, 21, 2)])

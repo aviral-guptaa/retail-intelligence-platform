@@ -184,9 +184,6 @@ function render(d){
   const p=q.predictions||{};
   $('mPred10').textContent=(p['10min']??p['predicted_queue_length_10min'])??'—';
   $('mPred5').textContent=`in 5 min: ${(p['5min']??p['predicted_queue_length_5min'])??'—'}`;
-  $('mConf').textContent=Math.round((p.confidence??0)*100)+'%';
-  const iv=p['interval_10min'];
-  $('mInterval').textContent=iv?`${iv.low}–${iv.high}`:'—';
   $('predSource').textContent=q.prediction_source||'—';
 
   // recommendation
@@ -205,15 +202,23 @@ function render(d){
     }
   }
 
-  // shelves
-  const sh=d.shelves;
-  if(sh&&sh.shelves&&sh.shelves.length){
+  // shelves: can be a list of shelves, or {shelves:[...], status_summary}
+  const shRaw=d.shelves;
+  let shList=null, shSummary=null;
+  if(Array.isArray(shRaw)) shList=shRaw;
+  else if(shRaw&&Array.isArray(shRaw.shelves)){shList=shRaw.shelves;shSummary=shRaw.status_summary;}
+  if(shList&&shList.length){
     $('shelves').innerHTML=`<table><thead><tr><th>Shelf</th><th>Status</th><th>Trend</th><th>Risk</th></tr></thead><tbody>`+
-      sh.shelves.map(s=>`<tr><td>${s.shelf_id||s.id||'—'}</td>
-        <td>${badge(s.status)}</td><td>${s.trend||'—'}</td>
+      shList.map(s=>`<tr><td>${s.shelf_id||s.id||'—'}</td>
+        <td>${badge(s.status)}</td><td>${typeof s.trend==='number'?s.trend.toFixed(2):(s.trend||'—')}</td>
         <td>${typeof s.stock_out_risk==='number'?Math.round(s.stock_out_risk*100)+'%':(s.stock_out_risk||'—')}</td></tr>`).join('')+
       `</tbody></table>`;
   }
+  // confidence: prefer predictions.confidence; else derive from interval width on 10min
+  const iv10=p['interval_10min'];
+  let confLabel=p.confidence!==undefined?p.confidence:(iv10?Math.max(0,1-Math.min(1,(iv10.high-iv10.low)/12)):null);
+  $('mConf').textContent=confLabel!==null?Math.round(confLabel*100)+'%':'—';
+  $('mInterval').textContent=iv10?`${iv10.low}–${iv10.high}`:'—';
 
   // charts
   pushChart(qc, fmtTime(d.ts), q.total||0);
