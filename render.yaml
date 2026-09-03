@@ -1,0 +1,13 @@
+# Render Blueprint — deploy the SIH Retail Intelligence web dashboard.
+# In Render: New -> Blueprint -> connect this repo (options below will appear).
+services:
+  - type: web
+    name: retail-intelligence
+    runtime: docker
+    repo: https://github.com/aviral-guptaa/retail-intelligence-platform.git
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"

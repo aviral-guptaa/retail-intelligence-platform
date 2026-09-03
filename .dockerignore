@@ -1,0 +1,19 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.git/
+.pytest_cache/
+*.db
+
+# Large data / models are regenerated at build time (see Dockerfile) or ignored.
+data/*.db
+data/raw/*
+data/processed/*
+data/uploads/*
+models/prediction/*.joblib
+models/yolo/*.pt
+models/yolo/*.onnx
+*.log
+*.zip
+.DS_Store
