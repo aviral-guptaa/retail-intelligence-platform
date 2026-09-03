@@ -225,6 +225,25 @@ device → `scripts/benchmark.py` for FPS, latency percentiles, model size and
 RAM/CPU/GPU utilisation. See `deployment/edge/README.md` and
 `deployment/docker/` for containers.
 
+### Running the ML model on a website / web service
+
+The queue forecaster is a tiny (≈500 KB) scikit-learn GradientBoosting model —
+it runs on any CPU and needs no GPU or torch. The REST+WebSocket API already
+serves it (see "Run" above); to embed it behind your own web service:
+
+1. Ship `models/prediction/queue_model_{5,10}min.joblib` +
+   `queue_metrics.json` to the server.
+2. Reuse `ml/queue/predictor.py` (pure Python + numpy + sklearn + joblib — no
+   FastAPI/camera dependency) to produce per-horizon forecasts.
+3. Reproduce `_feature_row()` (12 features, fixed order) exactly — it interprets
+   `(ts, queue_len)` samples your upstream supplies.
+4. Start the API (default `:8000`) and point your frontend at `/api/*` + the
+   `/ws/live` WebSocket; the containerised build is in `deployment/docker/`.
+
+For the *vision* side (person/queue counting) on a server you'll need the YOLO
+checkpoint + `ultralytics` and, for real-time frame processing, an appropriate
+deployment target (see `deployment/edge/`).
+
 ## Integration checklist
 
 1. Set `demo.enabled: false` and a real `cameras.yaml` source (webcam or RTSP).
