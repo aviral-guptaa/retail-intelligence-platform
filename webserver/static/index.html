@@ -71,6 +71,11 @@
   #heatmap{width:100%; height:100%; object-fit:contain; border-radius:8px; border:1px solid var(--edge); background:#000; visibility:hidden}
   .monitor{font-size:11px; margin-top:6px}
   .monitor div{display:flex; justify-content:space-between; padding:2px 0}
+  /* compact uploaded-video preview pinned below the heatmap inside its column */
+  #videoWrap{display:none; margin-top:8px; flex:none}
+  #videoWrap.on{display:block}
+  #videoWrap .vlab{color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px}
+  #vid{width:100%; aspect-ratio:16/9; background:#000; border-radius:8px; border:1px solid var(--edge)}
   footer{color:var(--muted); font-size:10px; text-align:center; flex:none}
 </style>
 </head>
@@ -114,7 +119,14 @@
     <div id="shelves"><div class="empty">No shelf data yet.</div></div>
     <div class="monitor" id="monitor"></div>
   </div>
-  <div class="card"><h3>Movement heatmap</h3><img id="heatmap" alt="heatmap" onerror="this.style.visibility='hidden'" /></div>
+  <div class="card" style="display:flex;flex-direction:column">
+    <h3>Movement heatmap</h3>
+    <div class="chart-hold" style="flex:1"><img id="heatmap" alt="heatmap" onerror="this.style.visibility='hidden'" /></div>
+    <div id="videoWrap">
+      <div class="vlab">Uploaded video (live)</div>
+      <img id="vid" alt="live frame" />
+    </div>
+  </div>
 </div>
 
 <footer>Privacy-first retail analytics — anonymous track ids only, no facial recognition.</footer>
@@ -124,6 +136,8 @@ const $=id=>document.getElementById(id);
 
 let qc,fc;
 function initCharts(){
+  if(qc){qc.destroy();qc=null;}
+  if(fc){fc.destroy();fc=null;}
   const base={responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},
     scales:{x:{ticks:{color:'#93a0c4',maxTicksLimit:8,font:{size:10}},grid:{color:'#1b2340'}},
             y:{beginAtZero:true,ticks:{color:'#93a0c4',font:{size:10}},grid:{color:'#1b2340'}}},
@@ -212,6 +226,13 @@ function render(d){
   pushChart(fc, fmtTime(d.ts), [(f.occupancy||0),(f.total_entries||0)]);
   $('heatmap').style.visibility='visible';
   $('heatmap').src='/api/heatmap.png?v='+Date.now();
+  // live frame = EXACTLY the frame these analytics were computed on
+  if(currentMode==='video' && d.video_frame){
+    $('videoWrap').classList.add('on');
+    $('vid').src='data:image/jpeg;base64,'+d.video_frame;
+  } else {
+    $('videoWrap').classList.remove('on');
+  }
 }
 
 function connect(){
@@ -226,16 +247,22 @@ function connect(){
   };
   ws.onclose=()=>{$('connPill').textContent='◦ disconnected';$('connPill').className='pill off';setTimeout(connect,2000);};
 }
-async function api(url,opts){const r=await fetch(url,opts);const j=await r.json();if(!r.ok)throw new Error(j.detail||('status '+r.status));return j;}
+async function api(url,opts){const r=await fetch(url,{method:'POST',...(opts||{})});const j=await r.json();if(!r.ok)throw new Error(j.detail||('status '+r.status));return j;}
+let currentMode='none';
 async function refreshStatus(){
-  try{const s=await api('/api/run/status');
+  try{const s=await api('/api/run/status',{method:'GET'});
+    currentMode=s.run.mode||'none';
     if(s.run.mode)$('modePill').textContent=`${s.run.mode} · ${s.running?'running':'finished'}`;
     if(s.run.error){$('statusLine').textContent='Error: '+s.run.error;$('statusLine').className='status-line err';}
+    const doingVideo = s.run.mode==='video' && s.running;
+    if(!doingVideo && $('videoWrap').classList.contains('on')) $('videoWrap').classList.remove('on');
   }catch(e){}
 }
+function updateVideo(s){ currentMode = (s&&s.run? s.run.mode : 'none'); }
 $('demoBtn').onclick=async()=>{$('statusLine').textContent='Starting demo run…';$('statusLine').className='status-line';
+  $('videoWrap').classList.remove('on');
   try{await api('/api/run/demo');$('statusLine').textContent='Demo running ✓';initCharts();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
-$('stopBtn').onclick=async()=>{try{await api('/api/run/stop');$('statusLine').textContent='Run stopped.';}catch(e){$('statusLine').textContent=e.message;}};
+$('stopBtn').onclick=async()=>{try{await api('/api/run/stop');$('statusLine').textContent='Run stopped.';refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
 const dz=$('dropZone'), fi=$('fileInput');
 dz.onclick=()=>fi.click();
 dz.ondragover=e=>{e.preventDefault();dz.classList.add('drag');};
@@ -246,7 +273,7 @@ async function upload(file){
   const fd=new FormData();fd.append('file',file);
   $('statusLine').textContent=`Uploading ${file.name}…`;initCharts();
   try{const r=await fetch('/api/run/video',{method:'POST',body:fd});const j=await r.json();if(!r.ok)throw new Error(j.detail);
-    $('statusLine').textContent=`Video run started ✓`;}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}
+    $('statusLine').textContent=`Video run started ✓`;updateVideo(j);refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}
   fi.value='';
 }
 initCharts(); refreshStatus(); setInterval(refreshStatus,3000); connect();

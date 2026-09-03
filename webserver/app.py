@@ -182,6 +182,15 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
             return {"live": False}
         return {"live": True, **next(iter(p.services.values())).current()}
 
+    @app.get("/api/run/media")
+    def run_media() -> FileResponse:
+        """Stream the currently-running uploaded video so the dashboard can show
+        the real footage alongside the analytics. Supports HTTP Range (seeking)."""
+        source = manager.run_meta.get("source")
+        if manager.run_meta.get("mode") != "video" or not source or not Path(source).is_file():
+            raise HTTPException(404, "no uploaded video in this run")
+        return FileResponse(str(Path(source)), media_type="video/mp4")
+
     @app.get("/api/feedback")
     def feedback() -> Dict[str, Any]:
         p = manager.pipeline

@@ -109,7 +109,14 @@ class InferencePipeline:
         return {cid: svc.step() for cid, svc in self.services.items()}
 
     def live_snapshot(self) -> Dict[str, Any]:
-        return {cid: svc.current() for cid, svc in self.services.items()}
+        snap = {cid: svc.current() for cid, svc in self.services.items()}
+        for cid, svc in self.services.items():
+            frame = getattr(svc, "frame_jpeg_b64", None)
+            if callable(frame):
+                jpg = frame()
+                if jpg:
+                    snap[cid] = {**snap[cid], "video_frame": jpg}
+        return snap
 
     def single(self, camera_id: str) -> Dict[str, Any]:
         return self.services[camera_id].current()

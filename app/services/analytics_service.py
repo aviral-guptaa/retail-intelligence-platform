@@ -399,6 +399,27 @@ class AnalyticsService:
     def heatmap_image(self) -> np.ndarray:
         return self.heatmap.to_image()
 
+    def frame_jpeg_b64(self, max_width: int = 480) -> Optional[str]:
+        """Encode the most recently analysed frame as a small base64 JPEG so the
+        dashboard can show EXACTLY the frame the analytics were computed on
+        (keeping the displayed video in sync with the predictions)."""
+        frame = self._last_frame
+        if frame is None:
+            return None
+        try:
+            import base64, cv2 as _cv2
+            h, w = frame.shape[:2]
+            if w > max_width:
+                scale = max_width / float(w)
+                frame = _cv2.resize(frame, (max_width, int(h * scale)),
+                                    interpolation=_cv2.INTER_AREA)
+            ok, buf = _cv2.imencode(".jpg", frame, [_cv2.IMWRITE_JPEG_QUALITY, 68])
+            if not ok:
+                return None
+            return base64.b64encode(buf.tobytes()).decode("ascii")
+        except Exception:
+            return None
+
     def health(self) -> Dict[str, Any]:
         source_info: Dict[str, Any] = {"status": "ONLINE", "backend": "demo"}
         if self.source is not None and hasattr(self.source, "health"):
