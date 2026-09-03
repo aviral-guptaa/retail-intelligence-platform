@@ -12,6 +12,7 @@ venv/
 data/*.db
 data/raw/*
 data/processed/*
+data/uploads/*
 models/prediction/*.joblib
 models/yolo/*.pt
 models/yolo/*.onnx

@@ -46,6 +46,20 @@ down. Without a YOLO checkpoint, detection falls back to tracking raw
 background-motion blobs; install `ultralytics` + a checkpoint for proper
 person detection.
 
+### Web dashboard (upload a video + live dashboard)
+
+A functional prototype dashboard where you upload a video (or run the demo
+simulator) and the full pipeline runs server-side, streaming live metrics to the
+page over WebSockets — occupancy, queue length, 5/10-min model forecasts,
+recommendations, shelves and a heatmap:
+
+```bash
+python run_web.py       # -> http://127.0.0.1:8000/
+```
+
+`▶ Run demo` needs no camera; `Upload a video` runs the real vision pipeline on
+your file (`python-multipart` is required for uploads). See `webserver/README.md`.
+
 ## What's implemented (per spec section 7-8 + 18)
 
 | Module | Status | Notes |

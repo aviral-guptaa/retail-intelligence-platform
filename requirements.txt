@@ -23,3 +23,7 @@ pytest>=8.0
 
 # Optional: API tests (TestClient). The tests skip cleanly when absent.
 httpx2>=0.1
+
+# Optional: web dashboard video-upload form handling (used by run_web.py).
+# Not needed for the headless CLI / core analytics loop.
+python-multipart>=0.0.9
