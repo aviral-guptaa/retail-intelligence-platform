@@ -13,13 +13,13 @@ SQLAlchemy>=2.0
 pydantic>=2.6
 pytest>=8.0
 
-# Optional: real person detection & edge export.
-# Install the lines below when running against real cameras / building YOLO/ByteTrack models.
-# torch>=2.2
-# torchvision>=0.17
-# ultralytics>=8.2
-# onnx>=1.16
-# onnxruntime>=1.18
+# Real person detection & edge export (uncomment for real camera/video accuracy).
+# The pipeline degrades gracefully to motion-detection when these are absent.
+torch>=2.2
+torchvision>=0.17
+ultralytics>=8.2
+onnx>=1.16
+onnxruntime>=1.18
 
 # Optional: API tests (TestClient). The tests skip cleanly when absent.
 httpx2>=0.1

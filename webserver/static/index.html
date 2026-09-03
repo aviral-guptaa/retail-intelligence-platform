@@ -12,185 +12,179 @@
     --warn:#fbbf24; --bad:#f87171;
   }
   *{box-sizing:border-box; margin:0; padding:0}
-  body{background:var(--bg); color:var(--txt); font-family:'Segoe UI',system-ui,sans-serif;}
-  header{display:flex; align-items:center; gap:14px; padding:16px 26px;
-         background:linear-gradient(90deg,#111a33,#0b1020); border-bottom:1px solid var(--edge);
-         position:sticky; top:0; z-index:5;}
-  header .logo{font-size:20px; font-weight:700; letter-spacing:.5px}
+  html,body{height:100%; overflow:hidden}
+  body{background:var(--bg); color:var(--txt); font-family:'Segoe UI',system-ui,sans-serif;
+       display:flex; flex-direction:column; padding:10px 14px; gap:10px}
+  /* header */
+  header{display:flex; align-items:center; gap:14px; flex:none}
+  header .logo{font-size:17px; font-weight:700; letter-spacing:.4px}
   header .logo span{color:var(--accent)}
-  .pill{margin-left:auto; font-size:12px; padding:5px 12px; border-radius:20px;
-        border:1px solid var(--edge); background:var(--panel2); color:var(--muted)}
+  .pill{font-size:11px; padding:3px 10px; border-radius:20px; border:1px solid var(--edge); background:var(--panel2); color:var(--muted)}
   .pill.live{color:var(--good); border-color:#1b6b4f; background:#12251d}
   .pill.off{color:var(--muted)}
-  .wrap{display:grid; grid-template-columns:300px 1fr; gap:18px; padding:18px 26px;}
-  .side{display:flex; flex-direction:column; gap:14px}
-  .card,.side-card{background:var(--panel); border:1px solid var(--edge); border-radius:14px; padding:16px}
-  .side-card h3{font-size:13px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:12px}
-  .upload-zone{border:2px dashed var(--edge); border-radius:12px; padding:20px; text-align:center; color:var(--muted); cursor:pointer; transition:.2s}
+  #modePill{margin-left:auto}
+  /* top control bar */
+  .controls{display:flex; align-items:center; gap:10px; flex:none; flex-wrap:nowrap}
+  .upload-zone{border:2px dashed var(--edge); border-radius:10px; padding:8px 16px; text-align:center;
+               color:var(--muted); cursor:pointer; transition:.2s; font-size:13px; flex:none}
   .upload-zone:hover,.upload-zone.drag{border-color:var(--accent); color:var(--txt); background:#101a33}
   .upload-zone input{display:none}
-  .btn{display:block; width:100%; margin-top:10px; padding:11px; border:none; border-radius:10px;
-       font-size:14px; font-weight:600; cursor:pointer; transition:.15s}
+  .btn{border:none; border-radius:8px; padding:9px 16px; font-size:13px; font-weight:600; cursor:pointer; transition:.15s; flex:none}
   .btn.demo{background:var(--accent); color:#fff}
   .btn.demo:hover{background:#3d7ae0}
   .btn.stop{background:#3a1220; color:var(--bad); border:1px solid #7f1d2b}
   .btn:disabled{opacity:.5; cursor:not-allowed}
-  .hint{font-size:11px; color:var(--muted); margin-top:8px; text-align:center}
-  .status-line{font-size:12px; color:var(--muted); margin-top:10px; text-align:center; min-height:16px}
+  .status-line{font-size:12px; color:var(--muted); flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .status-line.err{color:var(--bad)}
-  .metric-row{display:grid; grid-template-columns:repeat(4,1fr); gap:14px}
-  .metric{background:var(--panel); border:1px solid var(--edge); border-radius:14px; padding:16px}
-  .metric .label{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px}
-  .metric .value{font-size:30px; font-weight:700; margin-top:6px}
-  .metric .sub{font-size:12px; color:var(--muted); margin-top:2px}
+  /* metrics row */
+  .metrics{display:grid; grid-template-columns:repeat(6,1fr); gap:10px; flex:none}
+  .metric{background:var(--panel); border:1px solid var(--edge); border-radius:12px; padding:10px 14px}
+  .metric .label{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px}
+  .metric .value{font-size:26px; font-weight:700; line-height:1.05; margin-top:2px}
+  .metric .sub{font-size:11px; color:var(--muted); margin-top:2px; white-space:nowrap}
   .metric .value.good{color:var(--good)} .metric .value.warn{color:var(--warn)} .metric .value.bad{color:var(--bad)}
-  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px}
-  .recommend{margin-top:14px; background:var(--panel); border:1px solid var(--edge); border-radius:14px; padding:16px}
-  .recommend .tag{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px}
-  .recommend .msg{font-size:18px; font-weight:600; margin-top:8px}
+  /* recommendation banner */
+  .recommend{display:flex; align-items:center; gap:14px; background:var(--panel); border:1px solid var(--edge);
+             border-radius:12px; padding:8px 14px; flex:none}
+  .recommend .tag{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; flex:none}
+  .recommend .msg{font-size:15px; font-weight:600; flex:1}
   .recommend .msg.action{color:var(--warn)}
   .recommend .msg.none{color:var(--good)}
-  .factors{margin-top:10px; display:flex; flex-wrap:wrap; gap:8px}
-  .factor{font-size:12px; background:var(--panel2); padding:5px 9px; border-radius:8px; color:var(--muted)}
-  table{width:100%; border-collapse:collapse; font-size:13px}
-  th{text-align:left; color:var(--muted); font-weight:600; padding:6px 8px; border-bottom:1px solid var(--edge)}
-  td{padding:8px; border-bottom:1px solid #1b2340}
-  .badge{display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600}
+  .factors{display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; flex:none}
+  .factor{font-size:11px; background:var(--panel2); padding:3px 8px; border-radius:8px; color:var(--muted)}
+  /* lower grid: 4 panels fit one row */
+  .panels{display:grid; grid-template-columns:1.3fr 1.3fr 1fr 1fr; gap:10px; flex:1; min-height:0}
+  .card{background:var(--panel); border:1px solid var(--edge); border-radius:12px; padding:10px; display:flex; flex-direction:column; min-width:0}
+  .card h3{color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; flex:none}
+  .chart-hold{flex:1; min-height:0; position:relative}
+  #shelves{flex:1; overflow:auto; font-size:12px}
+  table{width:100%; border-collapse:collapse}
+  th{text-align:left; color:var(--muted); font-weight:600; padding:3px 6px; border-bottom:1px solid var(--edge)}
+  td{padding:4px 6px; border-bottom:1px solid #1b2340}
+  .badge{display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:600}
   .badge.FULL{background:#12251d; color:var(--good)}
   .badge.LOW_STOCK,.badge.LOW{background:#33280f; color:var(--warn)}
   .badge.OUT_OF_STOCK,.badge.OUT{background:#3a1220; color:var(--bad)}
   .badge.OK,.badge.ok{background:#12251d; color:var(--good)}
   .badge.dim{background:var(--panel2); color:var(--muted)}
-  .empty{color:var(--muted); font-size:13px; text-align:center; padding:20px}
-  .monitor{font-size:13px}
-  .monitor table td:first-child{color:var(--muted)}
-  #heatmap{width:100%; border-radius:10px; border:1px solid var(--edge); background:#000}
-  footer{color:var(--muted); font-size:11px; text-align:center; padding:18px}
+  .empty{color:var(--muted); font-size:12px; text-align:center; padding:16px}
+  #heatmap{width:100%; height:100%; object-fit:contain; border-radius:8px; border:1px solid var(--edge); background:#000; visibility:hidden}
+  .monitor{font-size:11px; margin-top:6px}
+  .monitor div{display:flex; justify-content:space-between; padding:2px 0}
+  footer{color:var(--muted); font-size:10px; text-align:center; flex:none}
 </style>
 </head>
 <body>
 <header>
-  <div class="logo">Retail<span>Intelligence</span> &nbsp;·&nbsp; SIH 2026</div>
+  <div class="logo">Retail<span>Intelligence</span> · SIH 2026</div>
   <div class="pill off" id="connPill">◦ connecting…</div>
   <div class="pill" id="modePill">standby</div>
 </header>
 
-<div class="wrap">
-  <!-- SIDEBAR -->
-  <div class="side">
-    <div class="side-card">
-      <h3>Run analysis</h3>
-      <div class="upload-zone" id="dropZone">
-        <input type="file" id="fileInput" accept="video/*,.mp4,.mov,.avi,.mkv,.webm,.m4v" />
-        <div><strong>Upload a video</strong></div>
-        <div style="font-size:12px; margin-top:4px">mp4 / mov / avi / mkv · full pipeline</div>
-      </div>
-      <button class="btn demo" id="demoBtn">▶ Run demo (simulator)</button>
-      <button class="btn stop" id="stopBtn">■ Stop run</button>
-      <div class="hint">Demo needs no camera. Upload runs the real vision pipeline server-side.</div>
-      <div class="status-line" id="statusLine">Ready — choose an action.</div>
-    </div>
-
-    <div class="side-card">
-      <h3>Prediction source</h3>
-      <div style="font-size:13px" id="predSource">—</div>
-      <div class="monitor" id="monitor" style="margin-top:12px"></div>
-    </div>
+<div class="controls">
+  <div class="upload-zone" id="dropZone">
+    <input type="file" id="fileInput" accept="video/*,.mp4,.mov,.avi,.mkv,.webm,.m4v" />
+    <strong>Upload video</strong>
   </div>
+  <button class="btn demo" id="demoBtn">▶ Run demo</button>
+  <button class="btn stop" id="stopBtn">■ Stop</button>
+  <div class="status-line" id="statusLine">Ready — choose an action.</div>
+</div>
 
-  <!-- MAIN -->
-  <div class="main">
-    <div class="metric-row">
-      <div class="metric"><div class="label">Occupancy</div><div class="value" id="mOccupancy">—</div><div class="sub" id="mFootfall">entries/exits</div></div>
-      <div class="metric"><div class="label">Queue length</div><div class="value warn" id="mQueue">—</div><div class="sub" id="mWait">wait ≈ — min</div></div>
-      <div class="metric"><div class="label">Queue in 10 min</div><div class="value" id="mPred10">—</div><div class="sub" id="mPred5">in 5 min: —</div></div>
-      <div class="metric"><div class="label">Confidence</div><div class="value" id="mConf">—</div><div class="sub" id="mInterval">80% interval</div></div>
-    </div>
+<div class="metrics">
+  <div class="metric"><div class="label">Occupancy</div><div class="value" id="mOccupancy">—</div><div class="sub" id="mFootfall">in/out</div></div>
+  <div class="metric"><div class="label">Queue now</div><div class="value warn" id="mQueue">—</div><div class="sub" id="mWait">wait ≈ —</div></div>
+  <div class="metric"><div class="label">Queue · 5 min</div><div class="value" id="mPred5">—</div><div class="sub">forecast</div></div>
+  <div class="metric"><div class="label">Queue · 10 min</div><div class="value" id="mPred10">—</div><div class="sub" id="pm10"></div></div>
+  <div class="metric"><div class="label">Confidence</div><div class="value" id="mConf">—</div><div class="sub" id="mInterval">80% interval</div></div>
+  <div class="metric"><div class="label">Status</div><div class="value" id="mStatus">—</div><div class="sub" id="predSource">source</div></div>
+</div>
 
-    <div class="recommend" id="recCard">
-      <div class="tag">Recommendation</div>
-      <div class="msg none" id="recMsg">No live run yet.</div>
-      <div class="factors" id="recFactors"></div>
-    </div>
+<div class="recommend">
+  <div class="tag">Recommendation</div>
+  <div class="msg none" id="recMsg">No live run yet.</div>
+  <div class="factors" id="recFactors"></div>
+</div>
 
-    <div class="grid2">
-      <div class="card">
-        <h3 style="color:var(--muted); font-size:13px; margin-bottom:10px">Queue length — history</h3>
-        <canvas id="queueChart" height="120"></canvas>
-      </div>
-      <div class="card">
-        <h3 style="color:var(--muted); font-size:13px; margin-bottom:10px">Footfall / occupancy — history</h3>
-        <canvas id="footChart" height="120"></canvas>
-      </div>
-    </div>
-
-    <div class="grid2">
-      <div class="card">
-        <h3 style="color:var(--muted); font-size:13px; margin-bottom:10px">Shelves</h3>
-        <div id="shelves"><div class="empty">No shelf data yet.</div></div>
-      </div>
-      <div class="card">
-        <h3 style="color:var(--muted); font-size:13px; margin-bottom:10px">Movement heatmap</h3>
-        <img id="heatmap" alt="heatmap" src="" onerror="this.style.visibility='hidden'" />
-      </div>
-    </div>
+<div class="panels">
+  <div class="card"><h3>Queue length — history</h3><div class="chart-hold"><canvas id="queueChart"></canvas></div></div>
+  <div class="card"><h3>Footfall / occupancy</h3><div class="chart-hold"><canvas id="footChart"></canvas></div></div>
+  <div class="card">
+    <h3>Shelves</h3>
+    <div id="shelves"><div class="empty">No shelf data yet.</div></div>
+    <div class="monitor" id="monitor"></div>
   </div>
+  <div class="card"><h3>Movement heatmap</h3><img id="heatmap" alt="heatmap" onerror="this.style.visibility='hidden'" /></div>
 </div>
 
 <footer>Privacy-first retail analytics — anonymous track ids only, no facial recognition.</footer>
 
 <script>
 const $=id=>document.getElementById(id);
-const state={queueHist:[],footHist:[],ws:null};
 
-// ---- chart setup
 let qc,fc;
 function initCharts(){
-  const base={responsive:true,maintainAspectRatio:false,animation:false,
-    scales:{x:{grid:{color:'#1b2340'},ticks:{color:'#93a0c4'}},
-            y:{beginAtZero:true,grid:{color:'#1b2340'},ticks:{color:'#93a0c4'}}}};
+  const base={responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},
+    scales:{x:{ticks:{color:'#93a0c4',maxTicksLimit:8,font:{size:10}},grid:{color:'#1b2340'}},
+            y:{beginAtZero:true,ticks:{color:'#93a0c4',font:{size:10}},grid:{color:'#1b2340'}}},
+    plugins:{legend:{labels:{color:'#93a0c4',boxWidth:12,font:{size:10}}}}};
   qc=new Chart($('queueChart'),{type:'line',
-    data:{labels:[],datasets:[{label:'queue',data:[],borderColor:'#fbbf24',backgroundColor:'rgba(251,191,36,.15)',fill:true,tension:.3,pointRadius:0}]},
-    options:{...base,plugins:{legend:{labels:{color:'#93a0c4'}}}}});
+    data:{labels:[],datasets:[{label:'queue',data:[],borderColor:'#fbbf24',backgroundColor:'rgba(251,191,36,.15)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]},
+    options:{...base}});
   fc=new Chart($('footChart'),{type:'line',
     data:{labels:[],datasets:[
-      {label:'occupancy',data:[],borderColor:'#4c8dff',tension:.3,pointRadius:0},
-      {label:'footfall',data:[],borderColor:'#34d399',tension:.3,pointRadius:0}]},
-    options:{...base,plugins:{legend:{labels:{color:'#93a0c4'}}}}});
+      {label:'occupancy',data:[],borderColor:'#4c8dff',tension:.3,pointRadius:0,borderWidth:2},
+      {label:'footfall',data:[],borderColor:'#34d399',tension:.3,pointRadius:0,borderWidth:2}]},
+    options:{...base}});
 }
-
-// ---- helpers
+function pushChart(ch,label,vals){
+  ch.data.labels.push(label);
+  if(!Array.isArray(vals)) vals=[vals];
+  vals.forEach((v,i)=>{if(ch.data.datasets[i])ch.data.datasets[i].data.push(v);});
+  if(ch.data.labels.length>60){ch.data.labels.shift();ch.data.datasets.forEach(d=>d.data.shift());}
+  ch.update('none');
+}
 function badge(s){
   const b=String(s||'OK').toUpperCase().replace(/[^A-Z_]/g,'');
   const cls=['FULL','LOW','OUT','OK'].includes(b)?b:'dim';
   return `<span class="badge ${cls}">${s||'—'}</span>`;
 }
-function pushChart(ch,label,vals){
-  ch.data.labels.push(label);
-  if(!Array.isArray(vals)) vals=[vals];
-  vals.forEach((v,i)=>ch.data.datasets[i].data.push(v));
-  if(ch.data.labels.length>60){ch.data.labels.shift();ch.data.datasets.forEach(d=>d.data.shift());}
-  ch.update('none');
+function fmtTime(ts){return new Date(ts*1000).toTimeString().slice(0,8);}
+function fmtWait(q){
+  if(typeof q.total!=='number') return '—';
+  const w=q.wait_minutes;
+  if(typeof w==='number') return Number(w).toFixed(1)+' min';
+  if(typeof w==='object'){const qi=(q.queues&&q.queues[0])||{};const v=w[qi.queue_id];return v?Number(v).toFixed(1)+' min':'—';}
+  return '—';
 }
 
-// ---- render a full snapshot
 function render(d){
-  const f=d.footfall||{}, q=d.queues||{};
+  const f=d.footfall||{}, q=d.queues||{}, p=q.predictions||{};
   $('mOccupancy').textContent=f.occupancy??'—';
-  $('mOccupancy').className='value'+( (f.occupancy||0)>=22?' warn':'');
+  $('mOccupancy').className='value'+(f.occupancy>=22?' warn':'');
   $('mFootfall').textContent=`${f.total_entries??0} in · ${f.total_exits??0} out`;
   $('mQueue').textContent=q.total??'—';
   $('mWait').textContent=`wait ≈ ${fmtWait(q)}`;
-  const p=q.predictions||{};
+  $('mPred5').textContent=(p['5min']??p['predicted_queue_length_5min'])??'—';
   $('mPred10').textContent=(p['10min']??p['predicted_queue_length_10min'])??'—';
-  $('mPred5').textContent=`in 5 min: ${(p['5min']??p['predicted_queue_length_5min'])??'—'}`;
-  $('predSource').textContent=q.prediction_source||'—';
-
+  $('pm10').textContent='forecast';
+  const iv10=p['interval_10min'];
+  let conf=p.confidence;
+  if(conf==null&&iv10) conf=Math.max(0,1-Math.min(1,(iv10.high-iv10.low)/12));
+  $('mConf').textContent=conf!=null?Math.round(conf*100)+'%':'—';
+  $('mInterval').textContent=iv10?`${iv10.low}–${iv10.high}`:'—';
+  $('predSource').textContent=(q.prediction_source||'—');
+  const st=String(d.congestion_status||'').toLowerCase();
+  $('mStatus').textContent=(d.congestion_status||'—');
+  $('mStatus').className='value '+(st==='high'?'bad':st==='medium'||st==='moderate'?'warn':'good');
+  // monitors
+  const mon=(q.queues&&q.queues.length)?q.queues
+    .map(x=>`<div><span>${x.queue_id}</span><span>${x.length} · ${fmtWait1(x)}</span></div>`).join(''):'';
+  $('monitor').innerHTML=mon?'<div style="color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-size:10px;margin-bottom:2px">Per-checkout</div>'+mon:'';
   // recommendation
   const rec=q.recommendation_detail||q.recommendation;
   if(rec){
-    if(typeof rec==='string'){$('recMsg').textContent=rec;$('recMsg').className='msg action';
-      $('recFactors').innerHTML='';}
+    if(typeof rec==='string'){ $('recMsg').textContent=rec; $('recMsg').className='msg action'; $('recFactors').innerHTML=''; }
     else{
       const action=rec.recommend_action||'none';
       $('recMsg').textContent=rec.text||rec.reason||'—';
@@ -198,86 +192,50 @@ function render(d){
       const fx=rec.factors||{};
       $('recFactors').innerHTML=Object.entries(fx)
         .filter(([k])=>['current_queue','predicted_queue','queue_growth_rate_per_min','footfall_current','open_counters'].includes(k))
-        .map(([k,v])=>`<span class="factor">${k}: ${v??'—'}</span>`).join('');
+        .map(([k,v])=>`<span class="factor">${k}: ${(v==null?'—':v)}</span>`).join('');
     }
   }
-
-  // shelves: can be a list of shelves, or {shelves:[...], status_summary}
-  const shRaw=d.shelves;
-  let shList=null, shSummary=null;
+  // shelves: list OR {shelves:[..]}
+  const shRaw=d.shelves; let shList=null;
   if(Array.isArray(shRaw)) shList=shRaw;
-  else if(shRaw&&Array.isArray(shRaw.shelves)){shList=shRaw.shelves;shSummary=shRaw.status_summary;}
+  else if(shRaw&&Array.isArray(shRaw.shelves)) shList=shRaw.shelves;
   if(shList&&shList.length){
     $('shelves').innerHTML=`<table><thead><tr><th>Shelf</th><th>Status</th><th>Trend</th><th>Risk</th></tr></thead><tbody>`+
-      shList.map(s=>`<tr><td>${s.shelf_id||s.id||'—'}</td>
-        <td>${badge(s.status)}</td><td>${typeof s.trend==='number'?s.trend.toFixed(2):(s.trend||'—')}</td>
+      shList.map(s=>`<tr><td>${s.shelf_id||s.id||'—'}</td><td>${badge(s.status)}</td>
+        <td>${typeof s.trend==='number'?s.trend.toFixed(2):(s.trend||'—')}</td>
         <td>${typeof s.stock_out_risk==='number'?Math.round(s.stock_out_risk*100)+'%':(s.stock_out_risk||'—')}</td></tr>`).join('')+
       `</tbody></table>`;
-  }
-  // confidence: prefer predictions.confidence; else derive from interval width on 10min
-  const iv10=p['interval_10min'];
-  let confLabel=p.confidence!==undefined?p.confidence:(iv10?Math.max(0,1-Math.min(1,(iv10.high-iv10.low)/12)):null);
-  $('mConf').textContent=confLabel!==null?Math.round(confLabel*100)+'%':'—';
-  $('mInterval').textContent=iv10?`${iv10.low}–${iv10.high}`:'—';
-
-  // charts
+  } else { $('shelves').innerHTML='<div class="empty">No shelf data yet.</div>'; }
+  function fmtWait1(x){const w=x.wait_minutes;return w!==null&&w!==undefined?Number(w).toFixed(1)+'m':'—';}
+  // charts + heatmap
   pushChart(qc, fmtTime(d.ts), q.total||0);
   pushChart(fc, fmtTime(d.ts), [(f.occupancy||0),(f.total_entries||0)]);
-
-  // heatmap
   $('heatmap').style.visibility='visible';
   $('heatmap').src='/api/heatmap.png?v='+Date.now();
 }
 
-function fmtWait(q){
-  if(typeof q.total!=='number'||typeof q.wait_minutes==='undefined') return '—';
-  const w=q.wait_minutes;
-  if(typeof w==='number') return Number(w).toFixed(1);
-  if(typeof w==='object'&&w[q.queues&&q.queues[0]?.queue_id]) return Number(w[q.queues[0].queue_id]).toFixed(1);
-  return '—';
-}
-function fmtTime(ts){const t=new Date(ts*1000);return t.toTimeString().slice(0,8);}
-
-// ---- websocket
 function connect(){
   const proto=location.protocol==='https:'?'wss':'ws';
   const ws=new WebSocket(`${proto}://${location.host}/ws/live`);
-  state.ws=ws;
   ws.onopen=()=>{$('connPill').textContent='● live';$('connPill').className='pill live';};
   ws.onmessage=(ev)=>{
     try{const msg=JSON.parse(ev.data);
-      if(msg.type==='live_snapshot'){
-        const cam=msg.data?Object.values(msg.data)[0]:null;
-        if(cam) render(cam);
-        $('modePill').textContent='live · '+ (cam&&cam.camera_id||'');
-      } else if(msg.type==='welcome'){ $('connPill').textContent='● connected'; }
+      if(msg.type==='live_snapshot'){const cam=Object.values(msg.data||{})[0];if(cam)render(cam);}
+      else if(msg.type==='welcome'){$('connPill').textContent='● connected';}
     }catch(e){}
   };
   ws.onclose=()=>{$('connPill').textContent='◦ disconnected';$('connPill').className='pill off';setTimeout(connect,2000);};
 }
-
-// ---- actions
 async function api(url,opts){const r=await fetch(url,opts);const j=await r.json();if(!r.ok)throw new Error(j.detail||('status '+r.status));return j;}
-function setBusy(on){$('demoBtn').disabled=on;$('stopBtn').disabled=on;}
-
 async function refreshStatus(){
-  try{
-    const s=await api('/api/run/status');
+  try{const s=await api('/api/run/status');
     if(s.run.mode)$('modePill').textContent=`${s.run.mode} · ${s.running?'running':'finished'}`;
     if(s.run.error){$('statusLine').textContent='Error: '+s.run.error;$('statusLine').className='status-line err';}
   }catch(e){}
 }
-$('demoBtn').onclick=async()=>{
-  setBusy(true);$('statusLine').textContent='Starting demo run…';$('statusLine').className='status-line';
-  try{const r=await api('/api/run/demo');$('statusLine').textContent='Demo running ✓';initCharts();}
-  catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}
-  setBusy(false);
-};
-$('stopBtn').onclick=async()=>{
-  try{await api('/api/run/stop');$('statusLine').textContent='Run stopped.';}
-  catch(e){$('statusLine').textContent=e.message;}
-};
-// upload
+$('demoBtn').onclick=async()=>{$('statusLine').textContent='Starting demo run…';$('statusLine').className='status-line';
+  try{await api('/api/run/demo');$('statusLine').textContent='Demo running ✓';initCharts();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
+$('stopBtn').onclick=async()=>{try{await api('/api/run/stop');$('statusLine').textContent='Run stopped.';}catch(e){$('statusLine').textContent=e.message;}};
 const dz=$('dropZone'), fi=$('fileInput');
 dz.onclick=()=>fi.click();
 dz.ondragover=e=>{e.preventDefault();dz.classList.add('drag');};
@@ -285,17 +243,13 @@ dz.ondragleave=()=>dz.classList.remove('drag');
 dz.ondrop=e=>{e.preventDefault();dz.classList.remove('drag');if(e.dataTransfer.files[0])upload(e.dataTransfer.files[0]);};
 fi.onchange=()=>{if(fi.files[0])upload(fi.files[0]);};
 async function upload(file){
-  setBusy(true);const fd=new FormData();fd.append('file',file);
-  $('statusLine').textContent=`Uploading ${file.name}…`;$('statusLine').className='status-line';
-  try{
-    const r=await fetch('/api/run/video',{method:'POST',body:fd});
-    const j=await r.json();if(!r.ok)throw new Error(j.detail);
-    $('statusLine').textContent=`Video run started ✓`;initCharts();
-  }catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}
-  setBusy(false);fi.value='';
+  const fd=new FormData();fd.append('file',file);
+  $('statusLine').textContent=`Uploading ${file.name}…`;initCharts();
+  try{const r=await fetch('/api/run/video',{method:'POST',body:fd});const j=await r.json();if(!r.ok)throw new Error(j.detail);
+    $('statusLine').textContent=`Video run started ✓`;}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}
+  fi.value='';
 }
-
-initCharts();refreshStatus();setInterval(refreshStatus,3000);connect();
+initCharts(); refreshStatus(); setInterval(refreshStatus,3000); connect();
 </script>
 </body>
 </html>
