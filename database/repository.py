@@ -6,7 +6,7 @@ layer and *persisted* here, keeping ML modules free of ORM imports.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -26,7 +26,7 @@ class Repository:
         if self.session is None:
             return
         try:
-            kwargs.setdefault("timestamp", datetime.utcnow())
+            kwargs.setdefault("timestamp", _utcnow())
             self.session.add(AnalyticsSnapshot(**kwargs))
             self.session.flush()
         except Exception as exc:
@@ -47,7 +47,7 @@ class Repository:
             return
         try:
             self.session.add(AlertRecord(
-                timestamp=datetime.utcnow(), camera_id=camera_id,
+                timestamp=_utcnow(), camera_id=camera_id,
                 alert_type=alert_type, severity=severity, message=message))
             self.session.flush()
         except Exception as exc:
@@ -72,7 +72,7 @@ class Repository:
             return
         try:
             self.session.add(TrajectorySample(
-                timestamp=datetime.utcnow(), camera_id=camera_id,
+                timestamp=_utcnow(), camera_id=camera_id,
                 track_id=track_id, x=x, y=y))
         except Exception as exc:
             logger.warning("could not persist trajectory sample: %s", exc)
@@ -107,3 +107,8 @@ def _snap_to_dict(row: AnalyticsSnapshot) -> Dict[str, Any]:
         "shelf_status": row.shelf_status,
         "alert_type": row.alert_type,
     }
+
+
+def _utcnow():
+    from datetime import timezone
+    return datetime.now(timezone.utc).replace(tzinfo=None)

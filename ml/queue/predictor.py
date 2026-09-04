@@ -63,6 +63,7 @@ class QueuePredictor:
         self._models: Dict[int, Any] = {}          # horizon -> fitted regressor (or None)
         self.metrics: Dict[str, Any] = {}          # per-horizon training metrics
         self._horizon_meta: Dict[int, Dict[str, Any]] = {}
+        self._warned: Dict[int, bool] = {}         # horizons that failed predict once
         self.overall_source = "fallback"
         self.warning_queue = float(queue_settings.get("congestion_warning_queue", 4))
         self.high_queue = float(queue_settings.get("congestion_high_queue", 8))
@@ -207,7 +208,11 @@ class QueuePredictor:
                 row = self._feature_row(queue_history, footfall, open_counters, t_now)
                 try:
                     model_pred = max(0.0, float(model.predict([row])[0]))
-                except Exception:  # feature mismatch with a freshly trained model
+                except Exception:
+                    if not self._warned.get(h):
+                        self._warned[h] = True
+                        logger.warning("Could not predict with %dmin queue model; "
+                                       "using linear fallback (feature mismatch)", h)
                     model_pred = None
 
             if model_pred is None:
@@ -285,13 +290,18 @@ class QueuePredictor:
         return float(slope) * 60.0
 
     @staticmethod
-    def _decorate(preds: Dict[str, float]) -> Dict[str, float]:
-        """Add the verbose predicted_queue_length_{n}min keys in place (no-op now)."""
+    def _decorate(preds: Dict[str, Any]) -> Dict[str, Any]:
+        """Add the verbose ``predicted_queue_length_{n}min`` keys for every horizon.
+
+        Unlike ``predict()`` (which sets them inline), this also handles
+        aggregate/global prediction dicts whose contents were cherry-picked
+        before reaching the API layer.
+        """
         decorated = dict(preds)
         for key, value in list(preds.items()):
-            if key.endswith("min") and key[:-3].isdigit():
+            if key.endswith("min") and key[:-3].isdigit() and isinstance(value, (int, float)):
                 verbose = f"predicted_queue_length_{key}"
-                if verbose in decorated and isinstance(value, (int, float)):
+                if verbose not in decorated:
                     decorated[verbose] = value
         return decorated
 
@@ -328,22 +338,8 @@ class QueuePredictor:
     # -------------------------------------------------------- recommendation
     def recommendation(self, predictions: Dict[str, float],
                        current_queue: int) -> str:
-        """Actionable suggestion derived from the predicted queue lengths."""
-        horizons = {k: v for k, v in predictions.items() if k.endswith("min")
-                    and k[:-3].isdigit() and isinstance(v, (int, float))}
-        if not horizons:
-            return "No congestion expected in the near future."
-        max_pred = max(horizons.values())
-        aggressive = max_pred >= self.high_queue or \
-            (max_pred >= self.warning_queue and current_queue >= self.warning_queue)
-        if aggressive:
-            horizon = min((int(k.replace("min", "")) for k, v in horizons.items()
-                           if v == max_pred), default=5)
-            return (f"Predicted congestion in ~{horizon} minutes "
-                    f"(queue predicted at {max_pred:.0f}) - open an additional counter.")
-        if current_queue >= self.warning_queue:
-            return f"Queue at {current_queue:.0f} is forming; monitor dwell/heat."
-        return "No congestion expected in the near future."
+        """Short text form of :meth:`explain_recommendation` (kept for tests)."""
+        return self.explain_recommendation(predictions, current_queue)["text"]
 
     def explain_recommendation(self, predictions: Dict[str, float],
                                current_queue: int) -> Dict[str, Any]:

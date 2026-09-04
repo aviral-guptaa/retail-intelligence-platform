@@ -100,13 +100,8 @@ class AnalyticsService:
             tracking_settings.get("backend", "auto"), tracking_settings, camera_id,
             detector=detector)
 
-        line_settings = settings.get("line_counter", {})
-        self.line_counter = (LineCounter(self.line["start"], self.line["end"],
-                                         camera_id, line_settings)
-                             if self.line else None)
-
+        self._build_zone_modules()
         self.footfall = FootfallCounter(camera_id)
-        self.dwell = ZoneDwellTracker(self.zones, camera_id)
         self.heatmap = HeatmapAccumulator(frame_w, frame_h, scale, camera_id, decay=decay)
         self._last_heatmap_ts = 0.0
         self._heat_export_path = resolve(zones_cfg.get("heatmap_export_path",
@@ -115,19 +110,11 @@ class AnalyticsService:
 
         queue_settings = settings.get("queue", {})
         pred_settings = settings.get("prediction", {})
-        self.queue = QueueCounter(self.queue_zones, queue_settings, camera_id)
         self.wait_time = WaitTimeEstimator(queue_settings)
         self.predictor = QueuePredictor(pred_settings, queue_settings)
         self.pred_evaluator = QueuePredictionEvaluator(
             pred_settings.get("eval_path", "data/processed/prediction_eval.csv"),
             self.predictor.horizons, queue_id=camera_id)
-
-        shelf_settings = settings.get("shelf", {})
-        self.shelves = ShelfClassifier(
-            {sid: {"region": s["region"], "expected_item_count": s["expected_item_count"]}
-             for sid, s in self.shelf_specs.items()},
-            shelf_settings, camera_id)
-        self.planogram = PlanogramChecker(self.camera_cfg.get("planogram", {}))
 
         # ---- real-data + persistence ---------------------------------------
         self.data_logger = QueueDataLogger(
@@ -145,6 +132,7 @@ class AnalyticsService:
         self.detector = detector
         self._last_tracks: List[Track] = []
         self._last_frame: Optional[np.ndarray] = None
+        self._frame_jpeg_cache: Dict[int, Optional[str]] = {}
         self.alert_status = "NORMAL"
         self.started = time.time()
 
@@ -157,6 +145,26 @@ class AnalyticsService:
                   "category": s.get("category", "unknown")}
             for sid, s in shelves.items()
         }
+
+    def _build_zone_modules(self) -> None:
+        """Create/recreate the modules that depend on zones/queue/shelves config.
+
+        Called once during __init__ and again on reload_config() after a live
+        zones POST update.  Modules that are camera-only (footfall, heatmap,
+        queue/dwell/line/planogram) are shared; other state (tracker,
+        data_logger, etc.) lives outside this method.
+        """
+        line_settings = self.settings.get("line_counter", {})
+        self.line_counter = (LineCounter(self.line["start"], self.line["end"],
+                                         self.camera_id, line_settings)
+                             if self.line else None)
+        self.dwell = ZoneDwellTracker(self.zones, self.camera_id)
+        self.queue = QueueCounter(self.queue_zones, self.settings.get("queue", {}), self.camera_id)
+        self.shelves = ShelfClassifier(
+            {sid: {"region": s["region"], "expected_item_count": s["expected_item_count"]}
+             for sid, s in self.shelf_specs.items()},
+            self.settings.get("shelf", {}), self.camera_id)
+        self.planogram = PlanogramChecker(self.camera_cfg.get("planogram", {}))
 
     # ---------------------------------------------------------------- pipeline
     def step(self) -> Dict[str, Any]:
@@ -267,11 +275,13 @@ class AnalyticsService:
 
         global_preds: Dict[str, float] = {}
         sources = set()
+        horizon_keys = {f"{h}min" for h in self.predictor.horizons} | {
+            f"predicted_queue_length_{h}min" for h in self.predictor.horizons}
         for qp in per_queue.values():
             src = qp.get("source", "fallback")
             sources.add(src)
             for k, v in qp.items():
-                if k in ("5min", "10min"):
+                if k in horizon_keys:
                     global_preds[k] = max(global_preds.get(k, 0.0), float(v))
         global_preds["source"] = "blend" if ("model" in sources or "blend" in sources) else "fallback"
         global_preds = self.predictor._decorate(global_preds)
@@ -380,19 +390,7 @@ class AnalyticsService:
         self.shelf_specs = self._parse_shelves(camera_cfg.get("shelves", {}))
         self.shelf_list = [self.shelf_specs[sid]["region"] for sid in self.shelf_specs]
 
-        from ml.shopper.dwell_time import ZoneDwellTracker as _ZDT
-        from ml.queue.queue_counter import QueueCounter as _QC
-
-        line_settings = self.settings.get("line_counter", {})
-        self.line_counter = (LineCounter(self.line["start"], self.line["end"], self.camera_id,
-                                         line_settings) if self.line else None)
-        self.dwell = _ZDT(self.zones, self.camera_id)
-        self.queue = _QC(self.queue_zones, self.settings.get("queue", {}), self.camera_id)
-        self.shelves = ShelfClassifier(
-            {sid: {"region": s["region"], "expected_item_count": s["expected_item_count"]}
-             for sid, s in self.shelf_specs.items()},
-            self.settings.get("shelf", {}), self.camera_id)
-        self.planogram = PlanogramChecker(camera_cfg.get("planogram", {}))
+        self._build_zone_modules()
         logger.info("reloaded config for %s", self.camera_id)
 
     # ------------------------------------------------------------------ misc
@@ -402,10 +400,14 @@ class AnalyticsService:
     def frame_jpeg_b64(self, max_width: int = 480) -> Optional[str]:
         """Encode the most recently analysed frame as a small base64 JPEG so the
         dashboard can show EXACTLY the frame the analytics were computed on
-        (keeping the displayed video in sync with the predictions)."""
+        (keeping the displayed video in sync with the predictions). The resize +
+        encode result is cached per frame so repeated WebSocket clients do not
+        re-encode the same frame."""
         frame = self._last_frame
         if frame is None:
             return None
+        if self._frame_no in self._frame_jpeg_cache:
+            return self._frame_jpeg_cache[self._frame_no]
         try:
             import base64, cv2 as _cv2
             h, w = frame.shape[:2]
@@ -415,8 +417,14 @@ class AnalyticsService:
                                     interpolation=_cv2.INTER_AREA)
             ok, buf = _cv2.imencode(".jpg", frame, [_cv2.IMWRITE_JPEG_QUALITY, 68])
             if not ok:
+                self._frame_jpeg_cache[self._frame_no] = None
                 return None
-            return base64.b64encode(buf.tobytes()).decode("ascii")
+            encoded = base64.b64encode(buf.tobytes()).decode("ascii")
+            # keep the cache bounded to the last few frames
+            if len(self._frame_jpeg_cache) > 30:
+                self._frame_jpeg_cache.clear()
+            self._frame_jpeg_cache[self._frame_no] = encoded
+            return encoded
         except Exception:
             return None
 
@@ -454,5 +462,5 @@ class AnalyticsService:
 
 
 def _utcnow():
-    from datetime import datetime
-    return datetime.utcnow()
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).replace(tzinfo=None)

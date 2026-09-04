@@ -121,6 +121,49 @@ def test_predictor_labels_source_and_verbose_keys():
     assert "congestion" in pr.recommendation(preds, current_queue=6).lower()
 
 
+def test_decorate_adds_verbose_keys_to_cherrypicked_aggregate():
+    # The aggregate global prediction dict drops most per-queue keys before
+    # reaching the API; _decorate must still expose the verbose keys there.
+    pr = QueuePredictor({"horizon_minutes": [5, 10],
+                         "model_path": "models/prediction/does_not_exist.joblib"}, {})
+    series = [(t, int(round(t / 10))) for t in range(0, 600, 10)]
+    per_queue = pr.predict(series, footfall=10, open_counters=3)
+    aggregate = {k: v for k, v in per_queue.items() if k in ("5min", "10min")}
+    aggregate["source"] = "blend"
+    decorated = pr._decorate(aggregate)
+    assert decorated["predicted_queue_length_5min"] == decorated["5min"]
+    assert decorated["predicted_queue_length_10min"] == decorated["10min"]
+    assert "predicted_queue_length_5min" not in aggregate      # still absent pre-decorate
+    assert "predicted_queue_length_10min" not in aggregate
+    assert decorated["5min"] == aggregate["5min"]
+
+
+def test_decorate_leaves_existing_verbose_keys_in_place():
+    pr = QueuePredictor({"horizon_minutes": [5, 10],
+                         "model_path": "models/prediction/does_not_exist.joblib"}, {})
+    preds = pr.predict([(t, t % 5) for t in range(0, 300, 10)], footfall=3, open_counters=2)
+    assert preds["predicted_queue_length_5min"] == preds["5min"]
+    # idempotent
+    assert pr._decorate(preds)["predicted_queue_length_5min"] == preds["5min"]
+
+
+def test_aggregate_metrics_expose_verbose_keys():
+    from collections import deque
+    from config.loader import load_settings, load_zones
+    from app.services.analytics_service import AnalyticsService
+
+    settings = load_settings()
+    svc = AnalyticsService("store_01", settings, load_zones(), source=None, detector=None)
+    now = time.time()
+    svc.queue._last_counts = {"checkout_01": 5}
+    svc.queue._history = {"checkout_01": deque((now + i, i % 6) for i in range(20))}
+    svc.footfall.current_active = 8
+    _, _, global_preds, _ = svc._queue_metrics()
+    assert global_preds.get("5min") is not None
+    assert global_preds.get("predicted_queue_length_5min") == global_preds["5min"]
+    assert global_preds.get("predicted_queue_length_10min") == global_preds["10min"]
+
+
 # ------------------------------------------------------------------ shelf
 def test_shelf_strategy_auto_prefers_detection_with_products():
     shelves = {"a": {"region": [[0, 0], [40, 0], [40, 40], [0, 40]], "expected_item_count": 10}}
@@ -203,16 +246,18 @@ def test_queue_datalogger_writes_rows(tmp_path):
 
 # ------------------------------------------------------------------ DB writer
 def test_background_writer_persists_and_shuts_down(tmp_path):
+    from datetime import datetime, timezone
     from database.models import build_session_factory
     from database.writer import BackgroundWriter
 
     url = f"sqlite:///{tmp_path / 'w.db'}"
     factory = build_session_factory(url)
     writer = BackgroundWriter(factory, flush_interval=0.05)
+    ts = datetime.now(timezone.utc).replace(tzinfo=None)
     for i in range(5):
-        writer.submit("snapshot", timestamp=__import__("datetime").datetime.utcnow(),
+        writer.submit("snapshot", timestamp=ts,
                       camera_id="c", footfall_count=i)
-    writer.submit("alert", timestamp=__import__("datetime").datetime.utcnow(),
+    writer.submit("alert", timestamp=ts,
                   camera_id="c", alert_type="congestion", severity="HIGH",
                   message="test")
     writer.shutdown(flush_timeout=2.0)
