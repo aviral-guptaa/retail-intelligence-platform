@@ -240,19 +240,20 @@ function render(d){
   _showMjpeg(true);
 }
 
-let _mjpegImg=null;
+let _mjpegOn=false;
 function _showMjpeg(on){
   const wrap=$('videoWrap'), img=$('vid');
   if(on){
-    if(_mjpegImg) { wrap.classList.add('on'); return; }
-    _mjpegImg=new Image();
-    $('vlab').textContent='Live analytics frame (MJPEG, de-identified)';
-    _mjpegImg.onload=()=>{ img.src=_mjpegImg.src; };
-    _mjpegImg.onerror=()=>{ _mjpegImg=null; wrap.classList.remove('on'); };
-    _mjpegImg.src='/video_stream?v='+Date.now();
+    if(_mjpegOn){ wrap.classList.add('on'); return; }   // already streaming
+    _mjpegOn=true;
+    document.querySelector('.vlab').textContent='Live analytics frame (MJPEG, de-identified)';
+    img.onload=()=>{ wrap.classList.add('on'); };
+    img.onerror=()=>{ _mjpegOn=false; wrap.classList.remove('on'); img.removeAttribute('src'); };
+    img.src='/video_stream?v='+Date.now();
     wrap.classList.add('on');
   } else {
-    _mjpegImg=null; img.removeAttribute('src'); wrap.classList.remove('on');
+    _mjpegOn=false; img.onload=null; img.onerror=null;
+    img.removeAttribute('src'); wrap.classList.remove('on');
   }
 }
 
