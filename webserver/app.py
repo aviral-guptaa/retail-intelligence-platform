@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-import subprocess
 import threading
 import time
 import uuid
@@ -35,52 +34,6 @@ from config.loader import load_settings                       # noqa: E402
 from database.repository import Repository                     # noqa: E402
 
 logger = logging.getLogger("webserver")
-
-BROWSER_CODECS = {"h264", "avc1", "vp9", "av1", "hev1", "hvc1"}
-
-
-def _probe_video_codec(path: Path) -> Optional[str]:
-    """Return the codec name of the first video stream, or None if unsure."""
-    try:
-        proc = subprocess.run(
-            ["ffprobe", "-v", "error", "-select_streams", "v:0",
-             "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(path)],
-            capture_output=True, text=True, timeout=60)
-    except Exception:
-        return None
-    if proc.returncode != 0:
-        return None
-    codec = (proc.stdout or "").strip().splitlines()
-    return codec[0] if codec else None
-
-
-def _transcode_for_web(src: Path) -> Path:
-    """If the uploaded file uses a codec browsers can't play (e.g. mpeg4/Xvid),
-    transcode it to H.264 MP4 so the dashboard's <video> can replay it. Falls
-    back to the original file when ffmpeg is missing or anything fails."""
-    try:
-        codec = _probe_video_codec(src)
-        if codec and codec.lower() in BROWSER_CODECS:
-            return src
-        web_dest = src.with_name(f"{src.stem}.web.mp4")
-        if web_dest.is_file() and web_dest.stat().st_size > 0:
-            return web_dest
-        ffmpeg = shutil.which("ffmpeg")
-        if ffmpeg is None:
-            return src
-        proc = subprocess.run(
-            [ffmpeg, "-y", "-v", "error", "-i", str(src),
-             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-             "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-             "-an", str(web_dest)],
-            capture_output=True, text=True, timeout=600)
-        if proc.returncode != 0:
-            logger.warning("transcode failed: %s", proc.stderr[-500:])
-            return src
-        return web_dest
-    except Exception as exc:
-        logger.warning("transcode error: %s", exc)
-        return src
 
 
 class RunManager:
@@ -109,7 +62,7 @@ class RunManager:
                 self.pipeline = None
 
     def start(self, mode: str, source: Optional[str] = None,
-              camera_id: str = "store_01", source_web: Optional[str] = None) -> Dict[str, Any]:
+              camera_id: str = "store_01") -> Dict[str, Any]:
         self.stop_current()
         run_id = uuid.uuid4().hex[:12]
 
@@ -145,7 +98,6 @@ class RunManager:
                     self.pipeline = pipeline
                 pipeline.add_camera(camera_id, mode="video", source=source)
                 self.run_meta = {"id": run_id, "mode": "video", "source": source,
-                                 "source_web": source_web,
                                  "started_ts": time.time(), "finished": False, "error": None}
                 threading.Thread(target=pipeline.start, daemon=True).start()
                 threading.Thread(target=_on_done, daemon=True).start()
@@ -200,8 +152,7 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
                 shutil.copyfileobj(file.file, buffer, length=1 << 20)
         finally:
             await file.close()
-        web_dest = _transcode_for_web(dest)
-        meta = manager.start("video", source=str(dest), source_web=str(web_dest))
+        meta = manager.start("video", source=str(dest))
         return {"status": "started", "run": meta}
 
     @app.post("/api/run/stop")
@@ -235,11 +186,11 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
     @app.get("/api/run/media")
     def run_media() -> FileResponse:
         """Stream the currently-running uploaded video so the dashboard can show
-        the actual footage (transcoded to a browser-playable codec when needed)."""
-        source = manager.run_meta.get("source_web") or manager.run_meta.get("source")
+        the real footage alongside the analytics. Supports HTTP Range (seeking)."""
+        source = manager.run_meta.get("source")
         if manager.run_meta.get("mode") != "video" or not source or not Path(source).is_file():
             raise HTTPException(404, "no uploaded video in this run")
-        return FileResponse(str(Path(source)), media_type="video/mp4", filename=Path(source).name)
+        return FileResponse(str(Path(source)), media_type="video/mp4")
 
     @app.get("/api/feedback")
     def feedback() -> Dict[str, Any]:

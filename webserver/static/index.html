@@ -78,7 +78,7 @@
   #videoWrap{display:none; margin-top:8px; flex:none}
   #videoWrap.on{display:block}
   #videoWrap .vlab{color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px}
-  #vidMjpeg,#vidPlay{width:100%; aspect-ratio:16/9; background:#000; border-radius:8px; border:1px solid var(--edge)}
+  #vid{width:100%; aspect-ratio:16/9; background:#000; border-radius:8px; border:1px solid var(--edge)}
   footer{color:var(--muted); font-size:10px; text-align:center; flex:none}
 </style>
 </head>
@@ -128,8 +128,7 @@
     <div class="chart-hold" style="flex:1"><img id="heatmap" alt="heatmap" onerror="this.style.visibility='hidden'" /></div>
     <div id="videoWrap">
       <div class="vlab">Uploaded video (live)</div>
-      <img id="vidMjpeg" alt="analytics frame" />
-      <video id="vidPlay" controls muted autoplay playsinline loop preload="auto"></video>
+      <img id="vid" alt="live frame" />
     </div>
   </div>
 </div>
@@ -237,18 +236,17 @@ function render(d){
   pushChart(fc, fmtTime(d.ts), [(f.occupancy||0),(f.total_entries||0)]);
   $('heatmap').style.visibility='visible';
   $('heatmap').src='/api/heatmap.png?v='+Date.now();
-  // live feed = analytics frame (demo) OR the actual uploaded video (video mode)
-  if(currentMode==='video'){ _showUploadedVideo(true); _showMjpeg(false); }
-  else { _showMjpeg(true); _showUploadedVideo(false); }
+  // live frame = MJPEG push stream of the EXACT frame being analysed
+  _showMjpeg(true);
 }
 
 let _mjpegOn=false;
 function _showMjpeg(on){
-  const wrap=$('videoWrap'), img=$('vidMjpeg');
+  const wrap=$('videoWrap'), img=$('vid');
   if(on){
     if(_mjpegOn){ wrap.classList.add('on'); return; }   // already streaming
     _mjpegOn=true;
-    document.querySelector('.vlab').textContent='Analytics frame (live, de-identified)';
+    document.querySelector('.vlab').textContent='Live analytics frame (MJPEG, de-identified)';
     img.onload=()=>{ wrap.classList.add('on'); };
     img.onerror=()=>{ _mjpegOn=false; wrap.classList.remove('on'); img.removeAttribute('src'); };
     img.src='/video_stream?v='+Date.now();
@@ -256,25 +254,6 @@ function _showMjpeg(on){
   } else {
     _mjpegOn=false; img.onload=null; img.onerror=null;
     img.removeAttribute('src'); wrap.classList.remove('on');
-  }
-}
-
-let _videoOn=false;
-function _showUploadedVideo(on){
-  const wrap=$('videoWrap'), v=$('vidPlay');
-  if(on){
-    if(_videoOn){ wrap.classList.add('on'); return; }   // already playing
-    _videoOn=true;
-    document.querySelector('.vlab').textContent='Uploaded video (live)';
-    v.onerror=()=>{ v.setAttribute('data-err','media-error '+v.error.code); };
-    v.onplaying=()=>v.removeAttribute('data-err');
-    v.src='/api/run/media?v='+Date.now();
-    v.load();
-    v.play().catch(()=>{ v.setAttribute('data-err', v.error ? ('play-reject '+v.error.code) : 'play-reject none'); });
-    wrap.classList.add('on');
-  } else {
-    _videoOn=false; v.pause(); v.removeAttribute('src'); v.load();
-    wrap.classList.remove('on');
   }
 }
 
@@ -298,14 +277,14 @@ async function refreshStatus(){
     if(s.run.mode)$('modePill').textContent=`${s.run.mode} · ${s.running?'running':'finished'}`;
     if(s.run.error){$('statusLine').textContent='Error: '+s.run.error;$('statusLine').className='status-line err';}
     const runningNow = s.running && (s.run.mode==='video' || s.run.mode==='demo');
-    if(!runningNow && $('videoWrap').classList.contains('on')){ _showMjpeg(false); _showUploadedVideo(false); }
+    if(!runningNow && $('videoWrap').classList.contains('on')) _showMjpeg(false);
   }catch(e){}
 }
 function updateVideo(s){ currentMode = (s&&s.run? s.run.mode : 'none'); }
 $('demoBtn').onclick=async()=>{$('statusLine').textContent='Starting demo run…';$('statusLine').className='status-line';
-  _showMjpeg(false);_showUploadedVideo(false);
+  _showMjpeg(false);
   try{await api('/api/run/demo');$('statusLine').textContent='Demo running ✓';initCharts();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
-$('stopBtn').onclick=async()=>{try{await api('/api/run/stop');$('statusLine').textContent='Run stopped.';_showMjpeg(false);_showUploadedVideo(false);refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
+$('stopBtn').onclick=async()=>{try{await api('/api/run/stop');$('statusLine').textContent='Run stopped.';_showMjpeg(false);refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
 const dz=$('dropZone'), fi=$('fileInput');
 dz.onclick=()=>fi.click();
 dz.ondragover=e=>{e.preventDefault();dz.classList.add('drag');};
