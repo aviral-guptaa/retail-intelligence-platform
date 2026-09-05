@@ -298,18 +298,17 @@ async function refreshStatus(){
     currentMode=s.run.mode||'none';
     if(s.run.mode)$('modePill').textContent=`${s.run.mode} · ${s.running?'running':'finished'}`;
     if(s.run.error){$('statusLine').textContent='Error: '+s.run.error;$('statusLine').className='status-line err';}
-    if(!_hasVideo && s.has_upload){ _hasVideo=true; _showUploadedVideo(true); _showMjpeg(false); }
-    if(!s.has_upload && $('videoWrap').classList.contains('on')){ _showMjpeg(false); _showUploadedVideo(false); }
+    if(!_hasVideo && s.has_upload) _hasVideo=true;
+    const runningNow = s.running && (s.run.mode==='video' || s.run.mode==='demo');
+    if(!runningNow && !_hasVideo && $('videoWrap').classList.contains('on')){ _showMjpeg(false); _showUploadedVideo(false); }
+    if(_hasVideo && $('videoWrap').classList.contains('on')){ _showMjpeg(false); _showUploadedVideo(true); }
   }catch(e){}
 }
 function updateVideo(s){ currentMode = (s&&s.run? s.run.mode : 'none'); }
-$('demoBtn').onclick=async()=>{$('statusLine').textContent='Starting run…';$('statusLine').className='status-line';
+$('demoBtn').onclick=async()=>{$('statusLine').textContent='Starting demo run…';$('statusLine').className='status-line';
   _showMjpeg(false);
-  try{const j=await api('/api/run/start-last');initCharts();
-    if(j.video){_hasVideo=true;_showUploadedVideo(true);$('statusLine').textContent='Analyzing your uploaded video — insights streaming.';}
-    else{$('statusLine').textContent='Demo running ✓';}
-  }catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
-$('stopBtn').onclick=async()=>{try{await api('/api/run/stop');$('statusLine').textContent='Run stopped — video paused.';_showMjpeg(false);_showUploadedVideo(false);refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
+  try{await api('/api/run/demo');$('statusLine').textContent='Demo running ✓';initCharts();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
+$('stopBtn').onclick=async()=>{try{await api('/api/run/stop');$('statusLine').textContent='Run stopped.';_showMjpeg(false);if(_hasVideo)_showUploadedVideo(true);refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
 const dz=$('dropZone'), fi=$('fileInput');
 dz.onclick=()=>fi.click();
 dz.ondragover=e=>{e.preventDefault();dz.classList.add('drag');};
@@ -320,11 +319,7 @@ async function upload(file){
   const fd=new FormData();fd.append('file',file);
   $('statusLine').textContent=`Uploading ${file.name}…`;initCharts();
   try{const r=await fetch('/api/run/video',{method:'POST',body:fd});const j=await r.json();if(!r.ok)throw new Error(j.detail);
-    _hasVideo=true;
-    _showUploadedVideo(false);   // force reload with the fresh upload's src
-    _showMjpeg(false);
-    _showUploadedVideo(true);
-    $('statusLine').textContent=`Video run started ✓ — playing your clip with live insights`;updateVideo(j);refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}
+    $('statusLine').textContent=`Video run started ✓`;updateVideo(j);refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}
   fi.value='';
 }
 initCharts(); refreshStatus(); setInterval(refreshStatus,3000); connect();

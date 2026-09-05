@@ -90,27 +90,11 @@ class RunManager:
         self.settings = settings
         self.pipeline: Optional[InferencePipeline] = None
         self.last_upload: Dict[str, Optional[str]] = {"source": None, "source_web": None}
-        self._restore_last_upload()
         self.run_meta: Dict[str, Any] = {
             "id": None, "mode": None, "source": None, "started_ts": None,
             "finished": False, "error": None,
         }
         self._lock = threading.Lock()
-
-    def _restore_last_upload(self) -> None:
-        """Reload the most recent upload from data/uploads so a page reload or
-        server restart still shows the same clip below the heatmap."""
-        try:
-            out_dir = ROOT / "data" / "uploads"
-            originals = sorted(out_dir.glob("*.mp4")) if out_dir.is_dir() else []
-            if not originals:
-                return
-            src = str(originals[-1])
-            web = src.replace(".mp4", ".web.mp4")
-            self.last_upload = {"source": src,
-                                "source_web": web if Path(web).is_file() else src}
-        except Exception as exc:
-            logger.warning("restore last upload: %s", exc)
 
     def _new_pipeline(self) -> InferencePipeline:
         repo = Repository(None)
@@ -221,20 +205,6 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
         manager.last_upload = {"source": str(dest), "source_web": str(web_dest)}
         meta = manager.start("video", source=str(dest), source_web=str(web_dest))
         return {"status": "started", "run": meta}
-
-    @app.post("/api/run/start-last")
-    def run_start_last() -> Dict[str, Any]:
-        """Analysis on the last uploaded video (preferred); synthetic demo only
-        when no video has been uploaded yet. Returns whether the run is video."""
-        src = manager.last_upload.get("source") or manager.last_upload.get("source_web")
-        if src and Path(src).is_file():
-            web = manager.last_upload.get("source_web") or src
-            meta = manager.start("video", source=str(src), source_web=str(web))
-            return {"status": "started", "run": meta, "mode": "video", "video": True,
-                    "note": "Analyzing your uploaded video"}
-        meta = manager.start("demo")
-        return {"status": "started", "run": meta, "mode": "demo", "video": False,
-                "note": "Demo simulation"}
 
     @app.post("/api/run/stop")
     def run_stop() -> Dict[str, Any]:
