@@ -237,9 +237,9 @@ function render(d){
   pushChart(fc, fmtTime(d.ts), [(f.occupancy||0),(f.total_entries||0)]);
   $('heatmap').style.visibility='visible';
   $('heatmap').src='/api/heatmap.png?v='+Date.now();
-  // once a video is uploaded, it stays on below the heatmap even during demo runs
-  if(_hasVideo){ _showUploadedVideo(true); _showMjpeg(false); }
-  else { _showUploadedVideo(false); _showMjpeg(true); }
+  // live feed = analytics frame (demo) OR the actual uploaded video (video mode)
+  if(currentMode==='video'){ _showUploadedVideo(true); _showMjpeg(false); }
+  else { _showMjpeg(true); _showUploadedVideo(false); }
 }
 
 let _mjpegOn=false;
@@ -292,23 +292,20 @@ function connect(){
 }
 async function api(url,opts){const r=await fetch(url,{method:'POST',...(opts||{})});const j=await r.json();if(!r.ok)throw new Error(j.detail||('status '+r.status));return j;}
 let currentMode='none';
-let _hasVideo=false;
 async function refreshStatus(){
   try{const s=await api('/api/run/status',{method:'GET'});
     currentMode=s.run.mode||'none';
     if(s.run.mode)$('modePill').textContent=`${s.run.mode} · ${s.running?'running':'finished'}`;
     if(s.run.error){$('statusLine').textContent='Error: '+s.run.error;$('statusLine').className='status-line err';}
-    if(!_hasVideo && s.has_upload) _hasVideo=true;
     const runningNow = s.running && (s.run.mode==='video' || s.run.mode==='demo');
-    if(!runningNow && !_hasVideo && $('videoWrap').classList.contains('on')){ _showMjpeg(false); _showUploadedVideo(false); }
-    if(_hasVideo && $('videoWrap').classList.contains('on')){ _showMjpeg(false); _showUploadedVideo(true); }
+    if(!runningNow && $('videoWrap').classList.contains('on')){ _showMjpeg(false); _showUploadedVideo(false); }
   }catch(e){}
 }
 function updateVideo(s){ currentMode = (s&&s.run? s.run.mode : 'none'); }
 $('demoBtn').onclick=async()=>{$('statusLine').textContent='Starting demo run…';$('statusLine').className='status-line';
-  _showMjpeg(false);
+  _showMjpeg(false);_showUploadedVideo(false);
   try{await api('/api/run/demo');$('statusLine').textContent='Demo running ✓';initCharts();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
-$('stopBtn').onclick=async()=>{try{await api('/api/run/stop');$('statusLine').textContent='Run stopped.';_showMjpeg(false);if(_hasVideo)_showUploadedVideo(true);refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
+$('stopBtn').onclick=async()=>{try{await api('/api/run/stop');$('statusLine').textContent='Run stopped.';_showMjpeg(false);_showUploadedVideo(false);refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
 const dz=$('dropZone'), fi=$('fileInput');
 dz.onclick=()=>fi.click();
 dz.ondragover=e=>{e.preventDefault();dz.classList.add('drag');};
