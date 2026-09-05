@@ -89,6 +89,7 @@ class RunManager:
     def __init__(self, settings: Dict[str, Any]):
         self.settings = settings
         self.pipeline: Optional[InferencePipeline] = None
+        self.last_upload: Dict[str, Optional[str]] = {"source": None, "source_web": None}
         self.run_meta: Dict[str, Any] = {
             "id": None, "mode": None, "source": None, "started_ts": None,
             "finished": False, "error": None,
@@ -201,6 +202,7 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
         finally:
             await file.close()
         web_dest = _transcode_for_web(dest)
+        manager.last_upload = {"source": str(dest), "source_web": str(web_dest)}
         meta = manager.start("video", source=str(dest), source_web=str(web_dest))
         return {"status": "started", "run": meta}
 
@@ -222,6 +224,7 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
             "live": svc is not None,
             "uptime_s": round(time.time() - manager.run_meta["started_ts"], 1)
                         if manager.run_meta["started_ts"] else 0,
+            "has_upload": bool(manager.last_upload.get("source")),
         }
 
     # ----------------------------------------------------------- analytics (live)
@@ -234,11 +237,12 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
 
     @app.get("/api/run/media")
     def run_media() -> FileResponse:
-        """Stream the currently-running uploaded video so the dashboard can show
-        the actual footage (transcoded to a browser-playable codec when needed)."""
-        source = manager.run_meta.get("source_web") or manager.run_meta.get("source")
-        if manager.run_meta.get("mode") != "video" or not source or not Path(source).is_file():
-            raise HTTPException(404, "no uploaded video in this run")
+        """Stream the most recently uploaded video so the dashboard can always show
+        the actual footage (transcoded to a browser-playable codec when needed),
+        independent of whether the current run is a demo or a video run."""
+        source = manager.last_upload.get("source_web") or manager.last_upload.get("source")
+        if not source or not Path(source).is_file():
+            raise HTTPException(404, "no uploaded video yet")
         return FileResponse(str(Path(source)), media_type="video/mp4", filename=Path(source).name)
 
     @app.get("/api/feedback")
