@@ -101,6 +101,7 @@
 
 <div class="metrics">
   <div class="metric"><div class="label">Occupancy</div><div class="value" id="mOccupancy">—</div><div class="sub" id="mFootfall">in/out</div></div>
+  <div class="metric"><div class="label">Unique shoppers</div><div class="value" id="mUnique">—</div><div class="sub">Re-ID, no faces</div></div>
   <div class="metric"><div class="label">Queue now</div><div class="value warn" id="mQueue">—</div><div class="sub" id="mWait">wait ≈ —</div></div>
   <div class="metric"><div class="label">Queue · 5 min</div><div class="value" id="mPred5">—</div><div class="sub">forecast</div></div>
   <div class="metric"><div class="label">Queue · 10 min</div><div class="value" id="mPred10">—</div><div class="sub" id="pm10"></div></div>
@@ -176,10 +177,11 @@ function fmtWait(q){
 }
 
 function render(d){
-  const f=d.footfall||{}, q=d.queues||{}, p=q.predictions||{};
+  const f=d.footfall||{}, q=d.queues||{}, p=q.predictions||{}, r=d.reid||{};
   $('mOccupancy').textContent=f.occupancy??'—';
   $('mOccupancy').className='value'+(f.occupancy>=22?' warn':'');
   $('mFootfall').textContent=`${f.total_entries??0} in · ${f.total_exits??0} out`;
+  $('mUnique').textContent=(r.unique_shoppers??f.unique_shoppers??'—');
   $('mQueue').textContent=q.total??'—';
   $('mWait').textContent=`wait ≈ ${fmtWait(q)}`;
   $('mPred5').textContent=(p['5min']??p['predicted_queue_length_5min'])??'—';
@@ -234,12 +236,23 @@ function render(d){
   pushChart(fc, fmtTime(d.ts), [(f.occupancy||0),(f.total_entries||0)]);
   $('heatmap').style.visibility='visible';
   $('heatmap').src='/api/heatmap.png?v='+Date.now();
-  // live frame = EXACTLY the frame these analytics were computed on
-  if(currentMode==='video' && d.video_frame){
-    $('videoWrap').classList.add('on');
-    $('vid').src='data:image/jpeg;base64,'+d.video_frame;
+  // live frame = MJPEG push stream of the EXACT frame being analysed
+  _showMjpeg(true);
+}
+
+let _mjpegImg=null;
+function _showMjpeg(on){
+  const wrap=$('videoWrap'), img=$('vid');
+  if(on){
+    if(_mjpegImg) { wrap.classList.add('on'); return; }
+    _mjpegImg=new Image();
+    $('vlab').textContent='Live analytics frame (MJPEG, de-identified)';
+    _mjpegImg.onload=()=>{ img.src=_mjpegImg.src; };
+    _mjpegImg.onerror=()=>{ _mjpegImg=null; wrap.classList.remove('on'); };
+    _mjpegImg.src='/video_stream?v='+Date.now();
+    wrap.classList.add('on');
   } else {
-    $('videoWrap').classList.remove('on');
+    _mjpegImg=null; img.removeAttribute('src'); wrap.classList.remove('on');
   }
 }
 
@@ -262,15 +275,15 @@ async function refreshStatus(){
     currentMode=s.run.mode||'none';
     if(s.run.mode)$('modePill').textContent=`${s.run.mode} · ${s.running?'running':'finished'}`;
     if(s.run.error){$('statusLine').textContent='Error: '+s.run.error;$('statusLine').className='status-line err';}
-    const doingVideo = s.run.mode==='video' && s.running;
-    if(!doingVideo && $('videoWrap').classList.contains('on')) $('videoWrap').classList.remove('on');
+    const runningNow = s.running && (s.run.mode==='video' || s.run.mode==='demo');
+    if(!runningNow && $('videoWrap').classList.contains('on')) _showMjpeg(false);
   }catch(e){}
 }
 function updateVideo(s){ currentMode = (s&&s.run? s.run.mode : 'none'); }
 $('demoBtn').onclick=async()=>{$('statusLine').textContent='Starting demo run…';$('statusLine').className='status-line';
-  $('videoWrap').classList.remove('on');
+  _showMjpeg(false);
   try{await api('/api/run/demo');$('statusLine').textContent='Demo running ✓';initCharts();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
-$('stopBtn').onclick=async()=>{try{await api('/api/run/stop');$('statusLine').textContent='Run stopped.';refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
+$('stopBtn').onclick=async()=>{try{await api('/api/run/stop');$('statusLine').textContent='Run stopped.';_showMjpeg(false);refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
 const dz=$('dropZone'), fi=$('fileInput');
 dz.onclick=()=>fi.click();
 dz.ondragover=e=>{e.preventDefault();dz.classList.add('drag');};

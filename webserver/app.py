@@ -20,12 +20,13 @@ from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = Path(__file__).resolve().parent / "static"
 
+from app.api.routes import mjpeg_frames  # noqa: E402
 from app.services.inference_service import InferencePipeline  # noqa: E402
 from app.services.analytics_service import AnalyticsService   # noqa: E402
 from app.api.websocket import hub                             # noqa: E402
@@ -217,6 +218,18 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
         except Exception:
             pass
         return Response(content=img.tobytes(), media_type="application/octet-stream")
+
+    @app.get("/video_stream")
+    def video_stream(max_frames: Optional[int] = None) -> Response:
+        """MJPEG push stream of the live, de-identified dashboard frame."""
+        p = manager.pipeline
+        if not p or not p.services:
+            raise HTTPException(404, "no live run")
+        svc = next(iter(p.services.values()))
+        return StreamingResponse(
+            mjpeg_frames(svc, max_width=960, max_frames=max_frames),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+        )
 
     # ------------------------------------------------------------------ websocket
     @app.websocket("/ws/live")

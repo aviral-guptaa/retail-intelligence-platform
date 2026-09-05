@@ -42,6 +42,16 @@ tracking:
   iou_match_threshold: 0.30
   track_buffer_points: 1200   # how many historical positions kept per track (heatmaps)
 
+reid:                         # privacy-preserving appearance Re-ID (no faces)
+  enabled: true               # assign anonymous cross-camera global ids + unique_shoppers
+  match_threshold: 0.86       # cosine similarity to re-link the same anonymous person
+  forget_seconds: 900         # drop identities unseen for this long
+  unique_window_seconds: 3600 # rolling window (s) counted by footfall.unique_shoppers
+  hue_bins: 12                # colour-granularity histogram size (privacy bound)
+  sat_bins: 5
+  val_bins: 5
+  embed_alpha: 0.5            # EMA weight when updating a matched identity's embedding
+
 line_counter:
   cooldown_frames: 12         # min frames between two counts for the same person
   entry_direction: down       # down = crossing the line downward counts as an entry (default store layout)
@@ -78,6 +88,7 @@ alerts:
   congestion_warning_queue: 4
   congestion_high_queue: 8
   congestion_watch_queue: 3
+  cooldown_seconds: 60        # min gap between emitted DB alerts (dedup window)
 
 database:
   snapshot_interval_seconds: 10    # throttle persisted aggregate snapshots

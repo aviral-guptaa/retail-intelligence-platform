@@ -28,6 +28,7 @@ from ml.shopper.dwell_time import ZoneDwellTracker
 from ml.shopper.footfall import FootfallCounter
 from ml.shopper.heatmap import HeatmapAccumulator
 from ml.shopper.line_counter import LineCounter
+from ml.shopper.reid import AppearanceReIdTracker
 from ml.tracking.factory import create_tracker
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,10 @@ class AnalyticsService:
                                                        "data/processed/heatmap.png"))
         self._heat_export_interval = float(zones_cfg.get("heatmap_export_interval_seconds", 60))
 
+        reid_settings = settings.get("reid", {})
+        self.reid = (AppearanceReIdTracker(reid_settings)
+                     if reid_settings.get("enabled", True) else None)
+
         queue_settings = settings.get("queue", {})
         pred_settings = settings.get("prediction", {})
         self.wait_time = WaitTimeEstimator(queue_settings)
@@ -132,8 +137,9 @@ class AnalyticsService:
         self.detector = detector
         self._last_tracks: List[Track] = []
         self._last_frame: Optional[np.ndarray] = None
-        self._frame_jpeg_cache: Dict[int, Optional[str]] = {}
+        self._frame_jpeg_cache: Dict[int, Any] = {}
         self.alert_status = "NORMAL"
+        self._last_alert_ts = 0.0
         self.started = time.time()
 
     # ---------------------------------------------------------------- config
@@ -181,6 +187,7 @@ class AnalyticsService:
 
         tracks = self.tracker.update(detections, frame)
         self._last_tracks = [t for t in tracks if t.class_name == "person"]
+        self._associate_reids(frame)
 
         events += (self.line_counter.update(self._last_tracks)
                    if self.line_counter else [])
@@ -197,6 +204,15 @@ class AnalyticsService:
 
         self._frame_no += 1
         return self.current()
+
+    # -------------------------------------------------------------- re-identification
+    def _associate_reids(self, frame: Optional[np.ndarray]) -> None:
+        """Assign anonymous cross-camera ids (appearance Re-ID, NO faces)."""
+        if self.reid is None or frame is None:
+            return
+        now = time.time()
+        for tr in self._last_tracks:
+            tr.global_id = self.reid.update(frame, tr.bbox(), self.camera_id, now)
 
     # ------------------------------------------------------------- persistence
     def _log_queue_features(self, now: float) -> None:
@@ -321,15 +337,22 @@ class AnalyticsService:
         ]
 
         occupancy = self.line_counter.occupancy() if self.line_counter else len(self._last_tracks)
+        unique = int(self.reid.unique_shoppers()) if self.reid else 0
 
         return {
             "camera_id": self.camera_id,
             "ts": time.time(),
             "uptime_s": round(time.time() - self.started, 1),
             "tracks": [t.to_dict() for t in self._last_tracks],
+            "reid": {
+                "enabled": self.reid is not None,
+                "active_identities": len(self.reid.active_ids()) if self.reid else 0,
+                "unique_shoppers": unique,
+            },
             "footfall": {
                 **self.footfall.snapshot(),
                 "occupancy": occupancy,
+                "unique_shoppers": unique,
             },
             "dwell": {
                 "avg_dwell_s": self.dwell.avg_dwell(),
@@ -366,14 +389,19 @@ class AnalyticsService:
 
     def _emit_alerts(self, status, recommendation, qtotal) -> None:
         if self.alert_status != status:
-            ts = _utcnow()
-            if self.db_writer is not None:
-                self.db_writer.submit("alert", timestamp=ts, camera_id=self.camera_id,
-                                      alert_type="congestion", severity=status,
-                                      message=recommendation)
-            elif self.repo is not None:
-                self.repo.add_alert(self.camera_id, "congestion", status, recommendation)
-                self.repo.commit()
+            cooldown = float(self.settings.get("alerts", {}).get("cooldown_seconds", 60))
+            now_ts = time.time()
+            deduped = self._last_alert_ts > 0 and (now_ts - self._last_alert_ts) < cooldown
+            if not deduped:
+                ts = _utcnow()
+                if self.db_writer is not None:
+                    self.db_writer.submit("alert", timestamp=ts, camera_id=self.camera_id,
+                                          alert_type="congestion", severity=status,
+                                          message=recommendation)
+                elif self.repo is not None:
+                    self.repo.add_alert(self.camera_id, "congestion", status, recommendation)
+                    self.repo.commit()
+                self._last_alert_ts = now_ts
         self.alert_status = status
         logger.debug("queue=%s status=%s rec=%s", qtotal, status, recommendation)
 
@@ -403,13 +431,33 @@ class AnalyticsService:
         (keeping the displayed video in sync with the predictions). The resize +
         encode result is cached per frame so repeated WebSocket clients do not
         re-encode the same frame."""
+        raw = self.frame_jpeg_bytes(max_width)
+        if raw is None:
+            return None
+        import base64
+        cached = self._frame_jpeg_cache.get(self._frame_no)
+        if isinstance(cached, str):  # already encoded in a previous call
+            return cached
+        b64 = base64.b64encode(raw).decode("ascii")
+        self._frame_jpeg_cache[self._frame_no] = b64
+        return b64
+
+    def frame_jpeg_bytes(self, max_width: int = 960) -> Optional[bytes]:
+        """Raw JPEG bytes of the analysed frame, encoded at most once per frame.
+        Used by the MJPEG push stream (no base64 overhead on the wire)."""
         frame = self._last_frame
         if frame is None:
             return None
-        if self._frame_no in self._frame_jpeg_cache:
-            return self._frame_jpeg_cache[self._frame_no]
+        cached = self._frame_jpeg_cache.get(self._frame_no)
+        if isinstance(cached, bytes):  # raw bytes already computed this frame
+            return cached
+        if isinstance(cached, str):  # b64 was computed first -> decode, don't re-encode
+            import base64
+            raw = base64.b64decode(cached)
+            self._frame_jpeg_cache[self._frame_no] = raw
+            return raw
         try:
-            import base64, cv2 as _cv2
+            import cv2 as _cv2
             h, w = frame.shape[:2]
             if w > max_width:
                 scale = max_width / float(w)
@@ -417,14 +465,13 @@ class AnalyticsService:
                                     interpolation=_cv2.INTER_AREA)
             ok, buf = _cv2.imencode(".jpg", frame, [_cv2.IMWRITE_JPEG_QUALITY, 68])
             if not ok:
-                self._frame_jpeg_cache[self._frame_no] = None
                 return None
-            encoded = base64.b64encode(buf.tobytes()).decode("ascii")
             # keep the cache bounded to the last few frames
             if len(self._frame_jpeg_cache) > 30:
                 self._frame_jpeg_cache.clear()
-            self._frame_jpeg_cache[self._frame_no] = encoded
-            return encoded
+            raw = buf.tobytes()
+            self._frame_jpeg_cache[self._frame_no] = raw
+            return raw
         except Exception:
             return None
 
@@ -442,6 +489,11 @@ class AnalyticsService:
             "tracker": getattr(self.tracker, "name", "iou"),
             "detector": det_info,
             "active_tracks": len(self._last_tracks),
+            "reid": {
+                "enabled": self.reid is not None,
+                "active_identities": len(self.reid.active_ids()) if self.reid else 0,
+                "unique_shoppers": int(self.reid.unique_shoppers()) if self.reid else 0,
+            },
             "entries": self.footfall.total_entries,
             "exits": self.footfall.total_exits,
             "occupancy": self.line_counter.occupancy() if self.line_counter else len(self._last_tracks),

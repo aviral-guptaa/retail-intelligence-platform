@@ -25,6 +25,7 @@ class Detection:
     class_name: str
     ts: float = field(default_factory=time.time)
     track_id: Optional[int] = None
+    global_id: Optional[str] = None
 
     @property
     def center(self) -> np.ndarray:
@@ -45,6 +46,7 @@ class Detection:
         cx, cy = self.center
         return {
             "track_id": self.track_id,
+            "global_id": self.global_id,
             "bbox": [round(self.x1, 1), round(self.y1, 1), round(self.x2, 1), round(self.y2, 1)],
             "center": [round(float(cx), 1), round(float(cy), 1)],
             "confidence": round(self.confidence, 3),
@@ -61,14 +63,28 @@ class Detection:
             class_name=track.class_name, ts=track.ts, track_id=track.id,
         )
 
+    @classmethod
+    def from_track(cls, track: "Track") -> "Detection":
+        return cls(
+            x1=track.x1, y1=track.y1, x2=track.x2, y2=track.y2,
+            confidence=track.confidence, class_id=track.class_id,
+            class_name=track.class_name, ts=track.ts, track_id=track.id,
+        )
+
 
 @dataclass
 class Track(Detection):
-    """A persistently tracked person with a temporary, anonymous id."""
+    """A persistently tracked person with a temporary, anonymous id.
+
+    ``global_id`` is the *cross-camera* anonymous re-id (``g_7``) assigned by
+    the appearance Re-ID module — never a face. It is None until the analytics
+    service has run Re-ID on the track's frame crop.
+    """
 
     id: int = 0
     hit_streak: int = 0
     missed_frames: int = 0
+    global_id: Optional[str] = None
     positions: Deque[np.ndarray] = field(default_factory=lambda: __import__("collections").deque(maxlen=1200))
 
     def record_position(self, maxlen: int) -> None:

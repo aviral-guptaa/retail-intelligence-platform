@@ -9,7 +9,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 
 from app.services.inference_service import InferencePipeline
 
@@ -97,6 +97,45 @@ def analytics_heatmap(request: Request, camera_id: Optional[str] = None) -> Resp
     except Exception:
         pass
     return Response(content=img.tobytes(), media_type="application/octet-stream")
+
+
+def mjpeg_frames(svc, max_width: int = 960, poll_sec: float = 0.10, max_frames: Optional[int] = None):
+    """Yield raw JPEG frames as multipart/x-mixed-replace chunks for MJPEG push.
+
+    Polls the analytics service for the most recent analysed frame and streams
+    boundary-wrapped JPEG parts (Gods-Eye style motion stream, but re-using the
+    already-cached encode so this adds no per-frame cost beyond a memcpy).
+    ``max_frames`` caps the stream for tests/clients that want a bounded body.
+    """
+    import base64
+
+    sent = 0
+    last_no = -1
+    while svc is not None:
+        if max_frames is not None and sent >= max_frames:
+            break
+        no = getattr(svc, "_frame_no", 0)
+        if no != last_no or max_frames is not None:
+            raw = svc.frame_jpeg_bytes(max_width=max_width)
+            if raw is not None:
+                last_no = no
+                sent += 1
+                yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + raw + b"\r\n")
+        time.sleep(poll_sec)
+
+
+@router.get("/video_stream")
+def video_stream(request: Request, camera_id: Optional[str] = None,
+                 max_frames: Optional[int] = None) -> Response:
+    """MJPEG push stream of the live (de-identified) frame for this camera."""
+    pipeline = _get_pipeline(request)
+    if not pipeline.services:
+        raise HTTPException(503, "No cameras configured")
+    svc = pipeline.services[_first_camera(pipeline, camera_id)]
+    return StreamingResponse(
+        mjpeg_frames(svc, max_frames=max_frames),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
 
 
 @router.get("/alerts")
