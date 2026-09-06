@@ -106,7 +106,32 @@ class InferencePipeline:
                     break
 
     def step_all(self) -> Dict[str, Any]:
-        return {cid: svc.step() for cid, svc in self.services.items()}
+        out: Dict[str, Dict[str, Any]] = {}
+        now = time.time()
+        for cid, svc in self.services.items():
+            t0 = time.monotonic()
+            try:
+                out[cid] = svc.step()
+                svc.monitor.step_ok(time.monotonic() - t0, time.time())
+            except Exception as exc:
+                logger.exception("step failed for %s", cid)
+                svc.monitor.step_error(time.monotonic() - t0)
+                out[cid] = {"camera_id": cid, "error": str(exc)}
+            # Fold the camera source status into the monitor (OFFLINE/RECONNECTING)
+            # and raise a deduplicated CAMERA_OFFLINE alert through the unified store.
+            try:
+                svc.health()  # folds source_health into monitor
+                st = svc.monitor.state
+                store = svc.alert_store
+                if st in ("OFFLINE", "RECONNECTING"):
+                    store.emit("camera", "HIGH", f"Camera {cid} is {st}",
+                               cid, store_id=svc.monitor.store_id,
+                               source="monitor", dedup_key="camera_state")
+                else:
+                    store.resolve("camera_state", "camera")
+            except Exception:
+                pass
+        return out
 
     def live_snapshot(self) -> Dict[str, Any]:
         snap = {cid: svc.current() for cid, svc in self.services.items()}
@@ -120,6 +145,79 @@ class InferencePipeline:
 
     def single(self, camera_id: str) -> Dict[str, Any]:
         return self.services[camera_id].current()
+
+    # ------------------------------------------------------- store / cameras
+    def cameras(self) -> Dict[str, Any]:
+        """Registry of known cameras with id, name, state, store and summary."""
+        from config.loader import load_cameras
+        meta = {c["id"]: c for c in load_cameras()}
+        now = time.time()
+        out = []
+        for cid, svc in self.services.items():
+            m = svc.monitor
+            perf = m.snapshot(now)
+            out.append({
+                "id": cid,
+                "name": meta.get(cid, {}).get("name", cid),
+                "store_id": m.store_id,
+                "state": perf["state"],
+                "fps": perf["fps"],
+                "frames": perf["frames_processed"],
+                "reconnects": perf["reconnects"],
+                "errors": perf["errors"],
+                "last_frame_age_s": perf["last_frame_age_s"],
+                "source_kind": meta.get(cid, {}).get("kind", "demo"),
+                "zone_ids": meta.get(cid, {}).get("zone_ids", []),
+                "shelf_ids": meta.get(cid, {}).get("shelf_ids", []),
+            })
+        return {"store_id": self.settings.get("app", {}).get("store_id"),
+                "cameras": out}
+
+    def performance(self) -> Dict[str, Any]:
+        from ml.analytics.performance import PerformanceSummary
+        return PerformanceSummary({cid: svc.monitor
+                                   for cid, svc in self.services.items()}).snapshot()
+
+    def stores(self) -> Dict[str, Any]:
+        """Store-level analytics aggregated across its cameras (one store today)."""
+        store_id = self.settings.get("app", {}).get("store_id", "store_01")
+        totals = {"entries": 0, "exits": 0, "occupancy": 0, "unique": 0,
+                  "queue_total": 0, "predicted_max": 0.0}
+        by_status: Dict[str, int] = {}
+        cameras_out = []
+        for cid, svc in self.services.items():
+            cur = svc.current()
+            ff = cur.get("footfall", {})
+            q = cur.get("queues", {})
+            totals["entries"] += ff.get("total_entries", 0)
+            totals["exits"] += ff.get("total_exits", 0)
+            totals["occupancy"] += ff.get("occupancy", 0)
+            totals["unique"] = max(totals["unique"], ff.get("unique_shoppers", 0))
+            totals["queue_total"] += q.get("total", 0)
+            totals["predicted_max"] = max(totals["predicted_max"],
+                                          q.get("predicted_max", 0.0))
+            st = cur.get("congestion_status", "NORMAL")
+            by_status[st] = by_status.get(st, 0) + 1
+            monitors = svc.monitor.snapshot()
+            cameras_out.append({
+                "id": cid,
+                "state": monitors["state"],
+                "congestion": st,
+                "alerts_active": svc.alert_store.snapshot()["active_count"],
+            })
+        return {
+            "store_id": store_id,
+            "cameras": cameras_out,
+            "totals": {
+                "entries": totals["entries"],
+                "exits": totals["exits"],
+                "occupancy": totals["occupancy"],
+                "unique_shoppers": totals["unique"],
+                "queue_total": totals["queue_total"],
+                "predicted_queue_max": round(totals["predicted_max"], 1),
+            },
+            "congestion_by_camera": by_status,
+        }
 
     # ------------------------------------------------------------------- http
     def _show(self, snapshot: Dict[str, Any]) -> None:

@@ -200,6 +200,29 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
         return {"live": True, "daily": svc.history.daily_summary(),
                 "peak_hours": svc.history.peak_hours()}
 
+    @app.get("/api/stores")
+    def stores() -> Dict[str, Any]:
+        p = manager.pipeline
+        if not p or not p.services:
+            return {"store_id": manager.settings.get("app", {}).get("store_id"),
+                    "cameras": [], "totals": {}}
+        return p.stores()
+
+    @app.get("/api/cameras")
+    def cameras() -> Dict[str, Any]:
+        p = manager.pipeline
+        if not p or not p.services:
+            return {"store_id": manager.settings.get("app", {}).get("store_id"),
+                    "cameras": []}
+        return p.cameras()
+
+    @app.get("/api/system/performance")
+    def system_performance() -> Dict[str, Any]:
+        p = manager.pipeline
+        if not p or not p.services:
+            return {"cameras": {}, "summary": {}}
+        return p.performance()
+
     @app.get("/api/alerts/active")
     def alerts_active() -> Dict[str, Any]:
         p = manager.pipeline

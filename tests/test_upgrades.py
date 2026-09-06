@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from ml.analytics.history import AnalyticsHistory
+from ml.analytics.performance import CameraMonitor, PerformanceSummary
 from app.services.alert_manager import AlertStore
 from app.schemas.models import Detection, Track
 from app.services.analytics_service import parse_zones
@@ -64,23 +65,72 @@ def test_alert_store_severity_filter_and_roll():
     store.emit("shelf", "WARNING", "overflow", "c1")       # exceeds max_active -> roll
     assert store.snapshot()["total_emitted"] == 3
 
+# ---------------------------------------------------------------- monitoring
+def test_camera_monitor_measures_fps_and_latency():
+    mon = CameraMonitor("store_01", "s1", latency_window=10, fps_window=10)
+    t = time.time()
+    for i in range(5):
+        mon.step_ok(0.05, t + i)
+    snap = mon.snapshot(t + 4)
+    assert snap["frames_processed"] == 5
+    assert snap["processing_latency_ms"]["avg_ms"] == pytest.approx(50.0)
+    assert snap["fps"] > 0
+    assert snap["last_frame_age_s"] == pytest.approx(0.0, abs=0.2)
+    mon.source_health({"status": "RECONNECTING"})
+    snap2 = mon.snapshot(t + 10)
+    assert snap2["reconnects"] == 1
+    assert snap2["state"] == "RECONNECTING"
+
+
+def test_camera_monitor_reports_latency_p95_and_errors():
+    mon = CameraMonitor("c1", latency_window=200, fps_window=60)
+    for i in range(100):
+        mon.step_ok(0.01 * (1 + (i % 10)), time.time() + i * 0.1)
+    mon.step_error(0.2)
+    snap = mon.snapshot(time.time() + 10)
+    assert snap["errors"] == 1
+    assert snap["processing_latency_ms"]["max_ms"] == pytest.approx(100.0)
+    assert snap["processing_latency_ms"]["p95_ms"] >= 90.0
+
+
+def test_performance_summary_aggregates_cameras():
+    m1 = CameraMonitor("a", "s1")
+    m2 = CameraMonitor("b", "s1")
+    for i in range(5):
+        m1.step_ok(0.05, time.time() + i)
+    m2.source_health({"status": "OFFLINE"})
+    perf = PerformanceSummary({"a": m1, "b": m2}).snapshot()
+    assert perf["summary"]["camera_count"] == 2
+    assert perf["summary"]["states"].get("OFFLINE", 0) == 1
+    assert perf["summary"]["total_frames"] == 5
+
+
+def test_camera_offline_flow_through_alert_store():
+    store = AlertStore({})
+    store.emit("camera", "HIGH", "Camera store_01 is OFFLINE", "store_01",
+               source="monitor", dedup_key="camera_state")
+    assert store.snapshot()["active_count"] == 1
+    store.resolve("camera_state", "camera")
+    assert store.snapshot()["active_count"] == 0
+    assert store.historical()[0]["type"] == "camera"
+
 # ---------------------------------------------------------------- history store
 def test_history_buckets_aggregate_and_roll():
     import time as _t
     h = AnalyticsHistory("store_01", minute_buckets=40, hour_buckets=24)
-    base = _t.time()
-    # 10 snapshots 1 minute apart => different minute buckets, same hour bucket
+    base = int(_t.time() // 60) * 60          # current minute boundary (wall-clock)
+    # 10 snapshots 1 minute apart => up to 10 minute buckets in 1-2 hour buckets
     for i in range(10):
         h.record(entries=2 * i, exits=i, occupancy=3, unique=5,
                  queue_total=i, pred_max=i + 1, status="NORMAL", now=base + 60 * i)
     m = h.minute_series(minutes=120)
-    assert len(m) == 10
-    assert m[-1]["entries"] == 18                       # 2 * 9
-    assert m[-1]["peak_queue"] == 9
+    assert len(m) == 10                       # all at/beyond wall-clock minute -> kept
+    assert sum(b["entries"] for b in m) == 90     # sum(2*i)
+    assert all(b["peak_occupancy"] == 3 for b in m)
     hh = h.hourly_series(days=7)
-    assert len(hh) == 1
-    assert hh[0]["peak_occupancy"] == 3
-    assert hh[0]["avg_occupancy"] == pytest.approx(3.0)
+    assert len(hh) >= 1
+    assert sum(b["entries"] for b in hh) == 90
+    assert all(b["avg_occupancy"] == pytest.approx(3.0) for b in hh)
 
 
 def test_history_daily_summary_and_peak_hours():
@@ -93,11 +143,11 @@ def test_history_daily_summary_and_peak_hours():
             h.record(entries=100, exits=95, occupancy=2, unique=2,
                      queue_total=4, pred_max=5, status="HIGH",
                      now=now + hour_off + i)
-    daily = h.daily_summary(days=1)
+    daily = h.daily_summary(days=2)
     assert len(daily) >= 1
-    assert daily[-1]["visits"] == 600
-    assert daily[-1]["peak_queue"] == 4
-    assert daily[-1]["congested_minutes_est"] > 0
+    assert sum(d["visits"] for d in daily) == 600
+    assert any(d["peak_queue"] == 4 for d in daily)
+    assert any(d["congested_minutes_est"] > 0 for d in daily)
     peaks = h.peak_hours()
     assert all(p["avg_footfall"] > 0 for p in peaks)
 

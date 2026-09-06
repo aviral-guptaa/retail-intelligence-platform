@@ -24,6 +24,7 @@ from ml.queue.queue_counter import QueueCounter
 from ml.queue.wait_time import WaitTimeEstimator
 from ml.queue.measurer import QueueWaitMeasurer
 from ml.analytics.history import AnalyticsHistory
+from ml.analytics.performance import CameraMonitor
 from app.services.alert_manager import AlertStore
 from ml.shelf.planogram import PlanogramChecker
 from ml.shelf.shelf_classifier import ShelfClassifier
@@ -144,6 +145,8 @@ class AnalyticsService:
         self.alert_status = "NORMAL"
         self._last_alert_ts = 0.0
         self.alert_store = AlertStore(settings.get("alerts", {}))
+        self.monitor = CameraMonitor(
+            camera_id, store_id=settings.get("app", {}).get("store_id"))
         self.history = AnalyticsHistory(camera_id)   # always-on historical store
         self.started = time.time()
 
@@ -582,10 +585,13 @@ class AnalyticsService:
             source_info = self.source.health()
         elif self.source is None:
             source_info = {"status": "ONLINE", "backend": "detector-only"}
+        if self.source is not None and hasattr(self.source, "health"):
+            self.monitor.source_health(source_info)
         det_info = self.detector.health() if self.detector else {"backend": "none"}
         return {
             "camera_id": self.camera_id,
             "alive": True,
+            "performance": self.monitor.snapshot(),
             "source": source_info,
             "tracker": getattr(self.tracker, "name", "iou"),
             "detector": det_info,

@@ -26,6 +26,35 @@ def _first_camera(pipeline: InferencePipeline, camera_id: Optional[str]) -> str:
 router = APIRouter()
 
 
+@router.get("/cameras")
+def cameras(request: Request) -> Dict[str, Any]:
+    pipeline = _get_pipeline(request)
+    return pipeline.cameras()
+
+
+@router.get("/cameras/{camera_id}/health")
+def camera_health(request: Request, camera_id: str) -> Dict[str, Any]:
+    pipeline = _get_pipeline(request)
+    svc = pipeline.services.get(camera_id)
+    if svc is None:
+        raise HTTPException(404, f"Unknown camera '{camera_id}'")
+    return svc.health()
+
+
+@router.get("/system/performance")
+def system_performance(request: Request) -> Dict[str, Any]:
+    pipeline = _get_pipeline(request)
+    return pipeline.performance()
+
+
+@router.get("/stores")
+def stores(request: Request) -> Dict[str, Any]:
+    pipeline = _get_pipeline(request)
+    if not pipeline.services:
+        raise HTTPException(503, "No cameras configured")
+    return pipeline.stores()
+
+
 @router.get("/health")
 def health(request: Request) -> Dict[str, Any]:
     pipeline: InferencePipeline = _get_pipeline(request)
