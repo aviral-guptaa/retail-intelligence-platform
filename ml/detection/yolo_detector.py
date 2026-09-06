@@ -59,6 +59,21 @@ class YoloDetector:
     def is_onnx(self) -> bool:
         return self.backend == "onnx"
 
+    @property
+    def supports_products(self) -> bool:
+        """True only when a real product class is configured.
+
+        ``product_class_id`` defaults to the placeholder 999 (``models.py``
+        comment: "set when a product model is trained"). Planogram compliance
+        MUST NOT run off a placeholder, so callers use this gate to report
+        MODEL_NOT_AVAILABLE instead of pretending shelf compliance is ok.
+        """
+        placeholder = self.settings.get("product_class_id", 999)
+        configured = self.product_class_id if self.product_class_id != 999 else None
+        classes = self.settings.get("classes") or []
+        has_non_person_class = any(int(c) != self.person_class_id for c in classes)
+        return (configured is not None) or has_non_person_class
+
     def _load(self) -> None:
         path = self.model_path
         if not path.exists():

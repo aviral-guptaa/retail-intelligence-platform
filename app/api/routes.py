@@ -167,6 +167,13 @@ def video_stream(request: Request, camera_id: Optional[str] = None,
     )
 
 
+@router.get("/analytics/planogram")
+def analytics_planogram(request: Request, camera_id: Optional[str] = None) -> Dict[str, Any]:
+    pipeline = _get_pipeline(request)
+    svc = pipeline.services[_first_camera(pipeline, camera_id)]
+    return {"camera_id": svc.camera_id, **svc.planogram_status}
+
+
 @router.get("/analytics/history")
 def analytics_history(request: Request, camera_id: Optional[str] = None) -> Dict[str, Any]:
     pipeline = _get_pipeline(request)

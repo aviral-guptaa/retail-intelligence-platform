@@ -223,6 +223,14 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
             return {"cameras": {}, "summary": {}}
         return p.performance()
 
+    @app.get("/api/analytics/planogram")
+    def analytics_planogram() -> Dict[str, Any]:
+        p = manager.pipeline
+        if not p or not p.services:
+            return {"status": "MODEL_NOT_AVAILABLE", "shelves_checked": 0,
+                    "product_model": False, "results": []}
+        return next(iter(p.services.values())).planogram_status
+
     @app.get("/api/alerts/active")
     def alerts_active() -> Dict[str, Any]:
         p = manager.pipeline

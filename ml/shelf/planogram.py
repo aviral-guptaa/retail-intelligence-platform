@@ -33,6 +33,28 @@ class PlanogramChecker:
     def __init__(self, planogram: Dict[str, Dict[str, Any]]):
         self.planogram = planogram or {}
 
+    def status(self, shelf_id: str, region, detections: List[Detection],
+               product_model: bool, now: float) -> Dict[str, Any]:
+        """Honest per-shelf planogram compliance status.
+
+        ``product_model`` must be the detector's real product capability. When
+        it is False we report ``MODEL_NOT_AVAILABLE`` - compliance is NOT
+        fictionally "OK" just because no product detector was loaded.
+        """
+        if not product_model:
+            return {"shelf_id": shelf_id, "status": "MODEL_NOT_AVAILABLE",
+                    "violations": [], "product_model": False}
+        if shelf_id not in self.planogram:
+            return {"shelf_id": shelf_id, "status": "OK",
+                    "violations": [], "product_model": True}
+        violations = self.check(shelf_id, region, detections, now)
+        return {
+            "shelf_id": shelf_id,
+            "status": "VIOLATIONS" if violations else "OK",
+            "violations": [v.to_dict() for v in violations],
+            "product_model": True,
+        }
+
     def check(self, shelf_id: str, region, detections: List[Detection], now: float) -> List[PlanogramViolation]:
         expected = self.planogram.get(shelf_id)
         if not expected:

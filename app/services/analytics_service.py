@@ -145,6 +145,10 @@ class AnalyticsService:
         self.alert_status = "NORMAL"
         self._last_alert_ts = 0.0
         self.alert_store = AlertStore(settings.get("alerts", {}))
+        self.planogram_status: Dict[str, Any] = {
+            "status": "MODEL_NOT_AVAILABLE", "shelves_checked": 0,
+            "product_model": False, "results": []}
+        self._planogram_alerted: Dict[str, bool] = {}
         self.monitor = CameraMonitor(
             camera_id, store_id=settings.get("app", {}).get("store_id"))
         self.history = AnalyticsHistory(camera_id)   # always-on historical store
@@ -209,6 +213,7 @@ class AnalyticsService:
 
         self.shelves.update(frame, detections, now)
         self._emit_shelf_alerts()
+        self._check_planogram_status(detections, now)
         self._maybe_export_heatmap(now)
 
         self._log_queue_features(now)
@@ -227,6 +232,45 @@ class AnalyticsService:
             tr.global_id = self.reid.update(frame, tr.bbox(), self.camera_id, now)
 
     # ------------------------------------------------------------- persistence
+    def _check_planogram_status(self, detections: List[Detection], now: float) -> None:
+        """Evaluate planogram compliance per shelf, honestly gated on a real
+        product model (otherwise REPORT MODEL_NOT_AVAILABLE)."""
+        product_model = bool(self.detector is not None
+                             and getattr(self.detector, "supports_products", False))
+        results = []
+        active_keys = set()
+        for sid, region in self.shelf_specs.items():
+            res = self.planogram.status(sid, region["region"], detections,
+                                        product_model, now)
+            results.append(res)
+            if res["status"] == "VIOLATIONS":
+                for v in res["violations"]:
+                    key = f"planogram:{sid}:{v['kind']}"
+                    active_keys.add(key)
+        aggregate = ("MODEL_NOT_AVAILABLE", 0) if not product_model else (
+            ("VIOLATIONS", len(results)) if any(r["status"] == "VIOLATIONS" for r in results)
+            else ("OK", len(results)))
+        self.planogram_status = {
+            "status": aggregate[0],
+            "shelves_checked": aggregate[1],
+            "product_model": product_model,
+            "results": results,
+        }
+        # forward violations into the unified alert store (dedup; resolve on disappear)
+        for key in active_keys:
+            sid, kind = key.split(":", 1)[1], key.split(":")[2]
+            if not self._planogram_alerted.get(key):
+                self.alert_store.emit("planogram", "WARNING",
+                                      f"Planogram violation {kind} on shelf {sid}",
+                                      self.camera_id,
+                                      store_id=self.settings.get("app", {}).get("store_id"),
+                                      source="rule", dedup_key=key)
+                self._planogram_alerted[key] = True
+        for key in list(self._planogram_alerted):
+            if key not in active_keys:
+                self.alert_store.resolve(key, "planogram")
+                del self._planogram_alerted[key]
+
     def _emit_shelf_alerts(self) -> None:
         """Emit unified store alerts on shelf LOW_STOCK / OUT_OF_STOCK transitions
         (only for committed states), and resolve them when a shelf recovers."""
@@ -432,6 +476,7 @@ class AnalyticsService:
             "shelves": self.shelves.snapshot(),
             "congestion_status": status,
             "alerts": self.alert_store.snapshot(),
+            "planogram": self.planogram_status,
         }
 
     # ------------------------------------------------------- historical store

@@ -18,6 +18,7 @@ from ml.queue.datalogger import QueueDataLogger
 from ml.queue.measurer import QueueWaitMeasurer
 from ml.queue.predictor import QueuePredictor
 from ml.queue.wait_time import WaitTimeEstimator
+from ml.shelf.planogram import PlanogramChecker
 from ml.shelf.shelf_classifier import ShelfClassifier
 from ml.shopper.dwell_time import ZoneDwellTracker
 from ml.shopper.heatmap import HeatmapAccumulator
@@ -336,6 +337,38 @@ def test_aggregate_metrics_expose_verbose_keys():
 
 
 # ------------------------------------------------------------------ shelf
+def test_planogram_honest_when_no_product_model():
+    checker = PlanogramChecker({"shelf_a": {"expected_columns": 3, "expected_rows": 4}})
+    # detector-only pipeline (no product model) -> MODEL_NOT_AVAILABLE, never "OK"
+    res = checker.status("shelf_a", [[0, 0], [40, 0], [40, 40], [0, 40]],
+                         [], product_model=False, now=time.time())
+    assert res["status"] == "MODEL_NOT_AVAILABLE"
+    assert res["product_model"] is False
+
+
+def test_planogram_detects_violations_with_product_model():
+    checker = PlanogramChecker({"shelf_a": {"expected_columns": 3, "expected_rows": 4}})
+    region = [[0, 0], [40, 0], [40, 40], [0, 40]]
+    # product model present but shelf empty -> MISSING_ITEM violation
+    res = checker.status("shelf_a", region, [], product_model=True, now=time.time())
+    assert res["status"] == "VIOLATIONS"
+    assert any(v["kind"] == "MISSING_ITEM" for v in res["violations"])
+    # full expected stock -> OK
+    prods = [Detection(5 + i * 3, 5, 5 + i * 3 + 6, 11, 0.9, 8, "product")
+             for i in range(12)]
+    ok = checker.status("shelf_a", region, prods, product_model=True, now=time.time())
+    assert ok["status"] == "OK"
+
+
+def test_planogram_unconfigured_shelf_is_ok():
+    checker = PlanogramChecker({})   # no planogram loaded
+    res = checker.status("shelf_b", [[0, 0], [40, 0], [40, 40], [0, 40]],
+                         [Detection(10, 10, 20, 20, 0.9, 8, "product")],
+                         product_model=True, now=time.time())
+    assert res["status"] == "OK"
+    assert res["violations"] == []
+
+
 def test_shelf_strategy_auto_prefers_detection_with_products():
     shelves = {"a": {"region": [[0, 0], [40, 0], [40, 40], [0, 40]], "expected_item_count": 10}}
     sc = ShelfClassifier(shelves, {"strategy": "auto"}, "c")
