@@ -104,3 +104,8 @@ api:
   port: 8000
   cors_origins:
     - "*"
+
+privacy:
+  retain_uploaded_video: false     # false = delete the uploaded clip after the run finishes
+  retention_hours: 24              # age after which data/uploads files are swept on boot
+  sweep_uploads_on_start: true     # prune data/uploads per retention on app startup

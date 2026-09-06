@@ -39,6 +39,8 @@ logger = logging.getLogger("webserver")
 class RunManager:
     """Owns the current pipeline and supports swapping in a new video/demo run."""
 
+    UPLOAD_DIR = ROOT / "data" / "uploads"
+
     def __init__(self, settings: Dict[str, Any]):
         self.settings = settings
         self.pipeline: Optional[InferencePipeline] = None
@@ -48,6 +50,48 @@ class RunManager:
         }
         self._lock = threading.Lock()
         self.integrations = __import__("ml.integrations.pos", fromlist=["IntegrationHub"]).IntegrationHub()
+        self._deleted_uploads = 0
+
+    # ------------------------------------------------------------ privacy
+    def _retain(self) -> bool:
+        return bool(self.settings.get("privacy", {}).get("retain_uploaded_video", False))
+
+    def sweep_uploads(self, force_all: bool = False) -> int:
+        """Prune uploads per retention config (or all, once a run is done)."""
+        retention_h = float(self.settings.get("privacy", {}).get("retention_hours", 24))
+        cutoff = time.time() - retention_h * 3600
+        removed = 0
+        if not self.UPLOAD_DIR.is_dir():
+            return 0
+        for f in self.UPLOAD_DIR.glob("*"):
+            try:
+                if force_all or (not f.is_dir() and f.stat().st_mtime < cutoff):
+                    f.unlink()
+                    self._deleted_uploads += 1
+                    removed += 1
+            except OSError:
+                pass
+        return removed
+
+    def purge_uploads(self) -> int:
+        return self.sweep_uploads(force_all=True)
+
+    def _discard_current_upload(self) -> None:
+        """Delete the uploaded clip we no longer need (privacy default)."""
+        meta = self.run_meta
+        if meta.get("mode") != "video":
+            return
+        src = meta.get("source")
+        if not src:
+            return
+        path = Path(src)
+        try:
+            if path.parent.resolve() == self.UPLOAD_DIR.resolve():
+                path.unlink(missing_ok=True)
+                self._deleted_uploads += 1
+                logger.info("deleted processed upload %s (retention off)", path.name)
+        except OSError as exc:
+            logger.warning("could not delete upload %s: %s", path, exc)
 
     def _new_pipeline(self) -> InferencePipeline:
         repo = Repository(None)
@@ -61,6 +105,8 @@ class RunManager:
                 except Exception as exc:
                     logger.warning("stop current run: %s", exc)
                 self.pipeline = None
+            if not self._retain():
+                self._discard_current_upload()
 
     def start(self, mode: str, source: Optional[str] = None,
               camera_id: str = "store_01") -> Dict[str, Any]:
@@ -79,6 +125,8 @@ class RunManager:
                 finished = svc is not None and getattr(svc.source, "finished", False)
                 if finished:
                     self.run_meta["finished"] = True
+                    if not self._retain():
+                        self._discard_current_upload()
                     return
                 time.sleep(0.5)
 
@@ -145,7 +193,7 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
         if file.size and file.size > 2 * 1024 * 1024 * 1024:  # 2GB guard
             raise HTTPException(413, "File too large")
 
-        out_dir = ROOT / "data" / "uploads"
+        out_dir = RunManager.UPLOAD_DIR
         out_dir.mkdir(parents=True, exist_ok=True)
         dest = out_dir / f"{uuid.uuid4().hex}.{name.rsplit('.', 1)[-1]}"
         try:
@@ -161,6 +209,26 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
         manager.stop_current()
         manager.run_meta["finished"] = True
         return {"status": "stopped"}
+
+    @app.get("/api/privacy/status")
+    def privacy_status() -> Dict[str, Any]:
+        priv = settings.get("privacy", {})
+        uploads = []
+        if RunManager.UPLOAD_DIR.is_dir():
+            uploads = sorted(RunManager.UPLOAD_DIR.glob("*"))
+        return {
+            "retain_uploaded_video": bool(priv.get("retain_uploaded_video", False)),
+            "retention_hours": priv.get("retention_hours", 24),
+            "uploads_on_disk": len(uploads),
+            "uploads_bytes": sum(f.stat().st_size for f in uploads if f.is_file()),
+            "deleted_uploads_total": manager._deleted_uploads,
+        }
+
+    @app.delete("/api/privacy/uploads")
+    def privacy_purge() -> Dict[str, Any]:
+        removed = manager.purge_uploads()
+        return {"status": "ok", "removed": removed,
+                "deleted_uploads_total": manager._deleted_uploads}
 
     @app.get("/api/run/status")
     def run_status() -> Dict[str, Any]:
@@ -373,6 +441,10 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
     @app.on_event("startup")
     async def _startup() -> None:
         asyncio.create_task(_broadcast_loop())
+        if settings.get("privacy", {}).get("sweep_uploads_on_start", True):
+            removed = manager.sweep_uploads()
+            if removed:
+                logger.info("privacy sweep removed %s stale upload(s)", removed)
 
     app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
     _app = app

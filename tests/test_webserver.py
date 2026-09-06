@@ -14,12 +14,14 @@ import pytest
 from config.loader import load_settings
 
 
-def _client():
+def _client(overrides=None):
     from fastapi.testclient import TestClient  # noqa: PLC0415
     from webserver.app import create_web_app  # noqa: PLC0415
     s = load_settings()
     s["demo"]["duration_seconds"] = 15
     s["demo"]["fps"] = 25
+    if overrides:
+        s.update(overrides)
     app = create_web_app(s)
     return TestClient(app)
 
@@ -56,6 +58,7 @@ def test_demo_run_and_live_analytics(client):
     cur = client.get("/api/analytics/current").json()
     assert cur["live"] is True
     assert "footfall" in cur and "queues" in cur and "congestion_status" in cur
+    assert "planogram" in cur and "alerts" in cur
     # prediction source should reflect the trained model or blend
     assert cur["queues"]["prediction_source"] in ("model", "blend", "fallback")
 
@@ -69,3 +72,39 @@ def test_stop_run(client):
     r = client.post("/api/run/stop")
     assert r.status_code == 200
     assert r.json()["status"] == "stopped"
+
+
+# ---------------------------------------------------------------- privacy
+def test_privacy_status_and_purge(client):
+    r = client.get("/api/privacy/status")
+    assert r.status_code == 200
+    body = r.json()
+    assert "retain_uploaded_video" in body
+    assert "uploads_on_disk" in body
+    # purge is a safe no-op / deletion of managed uploads
+    purge = client.delete("/api/privacy/uploads")
+    assert purge.status_code == 200
+    assert purge.json()["status"] == "ok"
+
+
+def test_retention_sweeps_stale_uploads(tmp_path):
+    from webserver.app import RunManager
+    fake = tmp_path / "data" / "uploads"
+    fake.mkdir(parents=True)
+    old = fake / "old_clip.mp4"
+    old.write_bytes(b"\x00" * 16)
+    import os
+    import time as _t
+    os.utime(old, (_t.time() - 48 * 3600, _t.time() - 48 * 3600))  # 2 days old
+    fresh = fake / "fresh_clip.mp4"
+    fresh.write_bytes(b"\x01" * 16)
+
+    class Mgr(RunManager):
+        pass
+
+    mgr = Mgr({"privacy": {"retain_uploaded_video": False, "retention_hours": 24}})
+    # point the sweep at the tmp dir
+    mgr.UPLOAD_DIR = fake
+    removed = mgr.sweep_uploads()
+    assert removed == 1
+    assert not old.exists() and fresh.exists()
