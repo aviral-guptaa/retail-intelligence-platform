@@ -22,6 +22,7 @@ from ml.queue.evaluator import QueuePredictionEvaluator
 from ml.queue.predictor import QueuePredictor
 from ml.queue.queue_counter import QueueCounter
 from ml.queue.wait_time import WaitTimeEstimator
+from ml.queue.measurer import QueueWaitMeasurer
 from ml.shelf.planogram import PlanogramChecker
 from ml.shelf.shelf_classifier import ShelfClassifier
 from ml.shopper.dwell_time import ZoneDwellTracker
@@ -166,6 +167,8 @@ class AnalyticsService:
                              if self.line else None)
         self.dwell = ZoneDwellTracker(self.zones, self.camera_id)
         self.queue = QueueCounter(self.queue_zones, self.settings.get("queue", {}), self.camera_id)
+        self.wait_measure = QueueWaitMeasurer(
+            self.queue_zones, self.settings.get("queue", {}), self.camera_id)
         self.shelves = ShelfClassifier(
             {sid: {"region": s["region"], "expected_item_count": s["expected_item_count"]}
              for sid, s in self.shelf_specs.items()},
@@ -193,6 +196,7 @@ class AnalyticsService:
                    if self.line_counter else [])
         events += self.dwell.update(self._last_tracks, now)
         events += self.queue.update(self._last_tracks, now)
+        events += self.wait_measure.update(self._last_tracks, now)
         self.footfall.update(events, active_count=len(self._last_tracks))
         self.heatmap.update(self._last_tracks)
 
@@ -330,6 +334,8 @@ class AnalyticsService:
                 "queue_id": qid,
                 "length": int(count),
                 "wait_minutes": wait.get(qid, 0.0),
+                "wait_kind": "rule_based",
+                "measured_wait_minutes": self.wait_measure.stats(qid),
                 "predictions": per_queue_preds.get(qid, {}),
                 "status": self._queue_status(global_preds.get("10min", 0.0), count),
             }
@@ -364,6 +370,8 @@ class AnalyticsService:
                 "total": qtotal,
                 "growth_rate": growth,
                 "wait_minutes": wait,
+                "wait_kind": "rule_based",
+                "measured_wait_minutes": self.wait_measure.all_stats(),
                 "predictions": global_preds,
                 "predicted_max": max((v for k, v in global_preds.items()
                                       if str(k).endswith("min") and str(k)[:-3].isdigit()),

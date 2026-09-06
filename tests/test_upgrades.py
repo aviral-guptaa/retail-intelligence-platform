@@ -12,6 +12,7 @@ import pytest
 from app.schemas.models import Detection, Track
 from app.services.analytics_service import parse_zones
 from ml.queue.datalogger import QueueDataLogger
+from ml.queue.measurer import QueueWaitMeasurer
 from ml.queue.predictor import QueuePredictor
 from ml.queue.wait_time import WaitTimeEstimator
 from ml.shelf.shelf_classifier import ShelfClassifier
@@ -35,6 +36,51 @@ def _track(x, y, tid):
     return Track(id=tid, x1=d.x1, y1=d.y1, x2=d.x2, y2=d.y2,
                  confidence=d.confidence, class_id=d.class_id,
                  class_name=d.class_name, ts=d.ts, hit_streak=1, missed_frames=0)
+
+
+# ------------------------------------------------------------------ measured wait
+def test_queue_wait_measurer_tracks_dwell_per_track():
+    zones = {"checkout_01": np.array([[10, 0], [30, 0], [30, 20], [10, 20]])}
+    m = QueueWaitMeasurer(zones, {}, "store_01")
+    now = 1000.0
+    m.update([_track(20, 30, 7)], now)            # track 7 enters the zone
+    m.update([_track(20, 30, 7)], now + 120.0)    # still queued
+    events = m.update([_track(20, 120, 7)], now + 300.0)   # leaves zone (still in frame)
+    assert any(ev.event_type == "queue_wait" for ev in events)
+    stats = m.stats("checkout_01")
+    assert stats["count"] == 1
+    assert stats["avg_wait_minutes"] == pytest.approx(5.0)   # 300s/60
+    assert stats["min_wait_minutes"] == pytest.approx(5.0)
+    assert m.active_in_zone("checkout_01") == 0
+
+
+def test_queue_wait_measurer_recycles_completed_bucket():
+    zones = {"checkout_01": np.array([[10, 0], [30, 0], [30, 20], [10, 20]])}
+    m = QueueWaitMeasurer(zones, {"wait_history": 2}, "store_01")
+    now = 0.0
+    for i in range(3):                        # three sequential waits
+        m.update([_track(50 + i, 200, 100 + i)], now)        # outside zone
+        m.update([_track(20, 30, 100 + i)], now + 10.0)      # enter
+        m.update([_track(50 + i, 200, 100 + i)], now + 40.0)  # leave (30s wait)
+        now += 100.0
+    assert m.stats("checkout_01")["count"] == 2              # deque maxlen honored
+
+
+def test_queue_wait_measurer_finalizes_scene_exit():
+    zones = {"checkout_01": np.array([[10, 0], [30, 0], [30, 20], [10, 20]])}
+    m = QueueWaitMeasurer(zones, {}, "store_01")
+    m.update([_track(20, 30, 5)], 1000.0)      # enters queue
+    events = m.update([], 1120.0)              # track vanishes entirely -> 2 min wait
+    assert any(ev.event_type == "queue_wait" and ev.value == pytest.approx(2.0)
+               for ev in events)
+
+
+def test_queue_wait_measurer_stale_ids_clamped():
+    zones = {"checkout_01": np.array([[10, 0], [30, 0], [30, 20], [10, 20]])}
+    m = QueueWaitMeasurer(zones, {"max_track_dwell_seconds": 60}, "store_01")
+    m.update([_track(20, 30, 9)], 1000.0)
+    m.update([], 1000.0 + 7200.0)              # id reuse artifact: > max dwell
+    assert m.stats("checkout_01")["count"] == 0
 
 
 # ---------------------------------------------------------------- line counter
