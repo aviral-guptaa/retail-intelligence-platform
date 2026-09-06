@@ -67,6 +67,14 @@ def test_demo_run_and_live_analytics(client):
     assert hm.status_code == 200
     assert len(hm.content) > 0
 
+    # dashboard data endpoints the UI polls
+    for ep in ["/api/analytics/history", "/api/system/performance",
+               "/api/alerts/active", "/api/privacy/status"]:
+        r = client.get(ep)
+        assert r.status_code == 200, ep
+        if "live" in r.json():
+            assert r.json()["live"] is True, ep
+
 
 def test_stop_run(client):
     r = client.post("/api/run/stop")

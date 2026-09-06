@@ -12,9 +12,9 @@
     --warn:#fbbf24; --bad:#f87171;
   }
   *{box-sizing:border-box; margin:0; padding:0}
-  html,body{height:100%; overflow:hidden}
+  html,body{height:100%}
   body{background:var(--bg); color:var(--txt); font-family:'Segoe UI',system-ui,sans-serif;
-       display:flex; flex-direction:column; padding:10px 14px; gap:10px}
+       display:flex; flex-direction:column; padding:10px 14px; gap:10px; overflow:auto}
   /* header */
   header{display:flex; align-items:center; gap:14px; flex:none}
   header .logo{font-size:17px; font-weight:700; letter-spacing:.4px}
@@ -52,12 +52,13 @@
   .recommend .msg.none{color:var(--good)}
   .factors{display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; flex:none}
   .factor{font-size:11px; background:var(--panel2); padding:3px 8px; border-radius:8px; color:var(--muted)}
-  /* lower grid: 4 panels fit one row */
+  /* grid: 4 panels per row */
   .panels{display:grid; grid-template-columns:1.3fr 1.3fr 1fr 1fr; gap:10px; flex:1; min-height:0}
-  .card{background:var(--panel); border:1px solid var(--edge); border-radius:12px; padding:10px; display:flex; flex-direction:column; min-width:0}
+  .panels.row2{grid-template-columns:1fr 1.3fr 1.3fr 1fr}
+  .card{background:var(--panel); border:1px solid var(--edge); border-radius:12px; padding:10px; display:flex; flex-direction:column; min-width:0; min-height:230px}
   .card h3{color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; flex:none}
   .chart-hold{flex:1; min-height:0; position:relative}
-  #shelves{flex:1; overflow:auto; font-size:12px}
+  #shelves,#alertList{flex:1; overflow:auto; font-size:12px}
   table{width:100%; border-collapse:collapse}
   th{text-align:left; color:var(--muted); font-weight:600; padding:3px 6px; border-bottom:1px solid var(--edge)}
   td{padding:4px 6px; border-bottom:1px solid #1b2340}
@@ -70,6 +71,12 @@
   .badge.model{background:#0f2f1d; color:var(--good); border:1px solid #1b6b4f}
   .badge.blend{background:#0f2950; color:#7fb2ff; border:1px solid #2a5fa0}
   .badge.fallback{background:#33280f; color:var(--warn); border:1px solid #7a5d1a}
+  .badge.INFO{background:var(--panel2); color:var(--muted)}
+  .badge.WARNING,.badge.warn{background:#33280f; color:var(--warn)}
+  .badge.HIGH{background:#3a1220; color:var(--bad)}
+  .badge.ONLINE,.badge.NORMAL{background:#12251d; color:var(--good)}
+  .badge.OFFLINE,.badge.ERROR{background:#3a1220; color:var(--bad)}
+  .badge.RECONNECTING{background:#33280f; color:var(--warn)}
   .empty{color:var(--muted); font-size:12px; text-align:center; padding:16px}
   #heatmap{width:100%; height:100%; object-fit:contain; border-radius:8px; border:1px solid var(--edge); background:#000; visibility:hidden}
   .monitor{font-size:11px; margin-top:6px}
@@ -79,6 +86,7 @@
   #videoWrap.on{display:block}
   #videoWrap .vlab{color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px}
   #vid{width:100%; aspect-ratio:16/9; background:#000; border-radius:8px; border:1px solid var(--edge)}
+  .alert-item{display:flex; gap:8px; align-items:baseline; padding:4px 2px; border-bottom:1px solid #1b2340; font-size:11px}
   footer{color:var(--muted); font-size:10px; text-align:center; flex:none}
 </style>
 </head>
@@ -133,15 +141,33 @@
   </div>
 </div>
 
+<div class="panels row2">
+  <div class="card">
+    <h3>Active alerts</h3>
+    <div id="alertList"><div class="empty">No active alerts.</div></div>
+    <div class="monitor" id="alertCounts"></div>
+  </div>
+  <div class="card"><h3>Footfall / queue — hourly history</h3><div class="chart-hold"><canvas id="hourChart"></canvas></div></div>
+  <div class="card">
+    <h3>Daily summary</h3>
+    <div id="dailyTable" class="chart-hold" style="overflow:auto"></div>
+  </div>
+  <div class="card">
+    <h3>Camera health</h3>
+    <div id="cameraHealth" class="chart-hold" style="overflow:auto"></div>
+  </div>
+</div>
+
 <footer>Privacy-first retail analytics — anonymous track ids only, no facial recognition.</footer>
 
 <script>
 const $=id=>document.getElementById(id);
 
-let qc,fc;
+let qc,fc,hc;
 function initCharts(){
   if(qc){qc.destroy();qc=null;}
   if(fc){fc.destroy();fc=null;}
+  if(hc){hc.destroy();hc=null;}
   const base={responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},
     scales:{x:{ticks:{color:'#93a0c4',maxTicksLimit:8,font:{size:10}},grid:{color:'#1b2340'}},
             y:{beginAtZero:true,ticks:{color:'#93a0c4',font:{size:10}},grid:{color:'#1b2340'}}},
@@ -154,6 +180,11 @@ function initCharts(){
       {label:'occupancy',data:[],borderColor:'#4c8dff',tension:.3,pointRadius:0,borderWidth:2},
       {label:'footfall',data:[],borderColor:'#34d399',tension:.3,pointRadius:0,borderWidth:2}]},
     options:{...base}});
+  hc=new Chart($('hourChart'),{type:'line',
+    data:{labels:[],datasets:[
+      {label:'footfall/hr',data:[],borderColor:'#34d399',tension:.3,pointRadius:0,borderWidth:2},
+      {label:'avg queue',data:[],borderColor:'#fbbf24',tension:.3,pointRadius:0,borderWidth:2}]},
+    options:{...base}});
 }
 function pushChart(ch,label,vals){
   ch.data.labels.push(label);
@@ -164,7 +195,7 @@ function pushChart(ch,label,vals){
 }
 function badge(s){
   const b=String(s||'OK').toUpperCase().replace(/[^A-Z_]/g,'');
-  const cls=['FULL','LOW','OUT','OK'].includes(b)?b:'dim';
+  const cls=['FULL','LOW','OUT','OK','INFO','WARNING','HIGH','ONLINE','OFFLINE','ERROR','RECONNECTING','NORMAL'].includes(b)?b:'dim';
   return `<span class="badge ${cls}">${s||'—'}</span>`;
 }
 function fmtTime(ts){return new Date(ts*1000).toTimeString().slice(0,8);}
@@ -183,7 +214,12 @@ function render(d){
   $('mFootfall').textContent=`${f.total_entries??0} in · ${f.total_exits??0} out`;
   $('mUnique').textContent=(r.unique_shoppers??f.unique_shoppers??'—');
   $('mQueue').textContent=q.total??'—';
-  $('mWait').textContent=`wait ≈ ${fmtWait(q)}`;
+  // measured (per-track) vs estimated (rule-based) wait time
+  const meas=q.measured_wait_minutes||{};
+  const measVals=Object.values(meas).filter(x=>x&&x.count>0);
+  const measCert=measVals.length>0;
+  const measAvg=measCert?Math.round(measVals.reduce((s,x)=>s+x.avg_wait_minutes,0)/measVals.length*10)/10:null;
+  $('mWait').innerHTML=`wait est ≈ ${fmtWait(q)}`+(measAvg!=null?` · measured avg ${measAvg}m`:'');
   $('mPred5').textContent=(p['5min']??p['predicted_queue_length_5min'])??'—';
   $('mPred10').textContent=(p['10min']??p['predicted_queue_length_10min'])??'—';
   $('pm10').textContent='forecast';
@@ -201,9 +237,11 @@ function render(d){
   const st=String(d.congestion_status||'').toLowerCase();
   $('mStatus').textContent=(d.congestion_status||'—');
   $('mStatus').className='value '+(st==='high'?'bad':st==='medium'||st==='moderate'?'warn':'good');
-  // monitors
+  // per-checkout rows: length · est wait · measured avg wait
   const mon=(q.queues&&q.queues.length)?q.queues
-    .map(x=>`<div><span>${x.queue_id}</span><span>${x.length} · ${fmtWait1(x)}</span></div>`).join(''):'';
+    .map(x=>{
+      const mv=(meas[x.queue_id]||{}); const ms=mv.count>0?` · measured avg ${mv.avg_wait_minutes}m`:'';
+      return `<div><span>${x.queue_id}</span><span>${x.length} · est ${fmtWait1(x)}`+ms+`</span></div>`;}).join(''):'';
   $('monitor').innerHTML=mon?'<div style="color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-size:10px;margin-bottom:2px">Per-checkout</div>'+mon:'';
   // recommendation
   const rec=q.recommendation_detail||q.recommendation;
@@ -219,14 +257,15 @@ function render(d){
         .map(([k,v])=>`<span class="factor">${k}: ${(v==null?'—':v)}</span>`).join('');
     }
   }
-  // shelves: list OR {shelves:[..]}
+  // shelves: list OR {shelves:[..]} — show source + confirmed
   const shRaw=d.shelves; let shList=null;
   if(Array.isArray(shRaw)) shList=shRaw;
   else if(shRaw&&Array.isArray(shRaw.shelves)) shList=shRaw.shelves;
   if(shList&&shList.length){
-    $('shelves').innerHTML=`<table><thead><tr><th>Shelf</th><th>Status</th><th>Trend</th><th>Risk</th></tr></thead><tbody>`+
+    $('shelves').innerHTML=`<table><thead><tr><th>Shelf</th><th>Status</th><th>Src</th><th>Conf</th><th>Risk</th></tr></thead><tbody>`+
       shList.map(s=>`<tr><td>${s.shelf_id||s.id||'—'}</td><td>${badge(s.status)}</td>
-        <td>${typeof s.trend==='number'?s.trend.toFixed(2):(s.trend||'—')}</td>
+        <td><span class="badge dim">${s.source||'heuristic'}</span></td>
+        <td>${s.confirmed?'✓':'-'}</td>
         <td>${typeof s.stock_out_risk==='number'?Math.round(s.stock_out_risk*100)+'%':(s.stock_out_risk||'—')}</td></tr>`).join('')+
       `</tbody></table>`;
   } else { $('shelves').innerHTML='<div class="empty">No shelf data yet.</div>'; }
@@ -238,6 +277,57 @@ function render(d){
   $('heatmap').src='/api/heatmap.png?v='+Date.now();
   // live frame = MJPEG push stream of the EXACT frame being analysed
   _showMjpeg(true);
+  // unified alert feed (from the live snapshot)
+  renderAlerts(d.alerts);
+}
+
+// ------------------------------------------------------------- alert feed
+function renderAlerts(a){
+  const list=$('alertList');
+  if(!a){ list.innerHTML='<div class="empty">No active alerts.</div>'; $('alertCounts').innerHTML=''; return; }
+  const act=a.active||[];
+  list.innerHTML=act.length?act.map(x=>
+    `<div class="alert-item">${badge(x.severity)}<span title="${x.type} · ${x.source}">${x.message||'—'}</span></div>`
+  ).join(''):'<div class="empty">No active alerts.</div>';
+  const c=a.by_severity||{};
+  $('alertCounts').innerHTML=`<div><span>INFO · WARNING · HIGH</span><span>${c.INFO||0} · ${c.WARNING||0} · ${c.HIGH||0}</span></div>`+
+    `<div><span>Webhook</span><span>${a.webhook_enabled?'enabled':'off'}</span></div>`;
+}
+
+// ------------------------------------------------------------- camera health
+async function refreshHealth(){
+  try{
+    const r=await fetch('/api/system/performance'); const j=await r.json();
+    const cams=Object.values(j.cameras||{});
+    $('cameraHealth').innerHTML=cams.length?
+      '<table><thead><tr><th>Camera</th><th>State</th><th>FPS</th><th>Lat</th><th>Frames</th><th>Err</th><th>Rcn</th></tr></thead><tbody>'+
+      cams.map(c=>`<tr><td>${c.camera_id}</td><td>${badge(c.state)}</td>
+        <td>${c.fps.toFixed?c.fps.toFixed(1):c.fps}</td>
+        <td>${c.processing_latency_ms?c.processing_latency_ms.avg_ms+'ms':'—'}</td>
+        <td>${c.frames_processed}</td><td>${c.errors}</td><td>${c.reconnects}</td></tr>`).join('')+
+      '</tbody></table>': '<div class="empty">No live camera.</div>';
+  }catch(e){}
+}
+
+// ------------------------------------------------------------- historical
+async function refreshHistory(){
+  try{
+    const r=await fetch('/api/analytics/history'); const j=await r.json();
+    if(!j.live) return;
+    const hourly=j.hourly||[];
+    if(hourly.length){
+      hc.data.labels=hourly.map(h=>fmtTime(h.ts));
+      hc.data.datasets[0].data=hourly.map(h=>h.entries);
+      hc.data.datasets[1].data=hourly.map(h=>h.avg_queue);
+      hc.update('none');
+    }
+    const daily=j.daily||[];
+    $('dailyTable').innerHTML=daily.length?
+      '<table><thead><tr><th>Date</th><th>Visits</th><th>Peak occ</th><th>Peak queue</th><th>Congested min</th></tr></thead><tbody>'+
+      daily.map(d=>`<tr><td>${d.date}</td><td>${d.visits}</td><td>${d.peak_occupancy}</td>
+        <td>${d.peak_queue}</td><td>${d.congested_minutes_est}</td></tr>`).join('')+
+      '</tbody></table>':'<div class="empty">Collecting…</div>';
+  }catch(e){}
 }
 
 let _mjpegOn=false;
@@ -298,7 +388,9 @@ async function upload(file){
     $('statusLine').textContent=`Video run started ✓`;updateVideo(j);refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}
   fi.value='';
 }
-initCharts(); refreshStatus(); setInterval(refreshStatus,3000); connect();
+initCharts(); refreshStatus(); refreshHealth(); refreshHistory();
+setInterval(refreshStatus,3000); setInterval(refreshHealth,5000); setInterval(refreshHistory,10000);
+connect();
 </script>
 </body>
 </html>
