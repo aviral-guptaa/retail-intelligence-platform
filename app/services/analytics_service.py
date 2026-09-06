@@ -239,10 +239,18 @@ class AnalyticsService:
         product model (otherwise REPORT MODEL_NOT_AVAILABLE)."""
         product_model = bool(self.detector is not None
                              and getattr(self.detector, "supports_products", False))
+        plan_dets = detections
+        if product_model and getattr(self.detector, "detect_products", None) \
+                and self._last_frame is not None:
+            try:
+                prod_dets = self.detector.detect_products(self._last_frame)
+                plan_dets = list(detections) + prod_dets
+            except Exception as exc:   # never break the analytics loop
+                logger.warning("detect_products failed (%s); planogram uses raw detections", exc)
         results = []
         active_keys = set()
         for sid, region in self.shelf_specs.items():
-            res = self.planogram.status(sid, region["region"], detections,
+            res = self.planogram.status(sid, region["region"], plan_dets,
                                         product_model, now)
             results.append(res)
             if res["status"] == "VIOLATIONS":

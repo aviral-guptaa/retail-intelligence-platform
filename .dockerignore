@@ -5,6 +5,7 @@ __pycache__/
 .git/
 .pytest_cache/
 *.db
+runs/
 
 # Large data / models are regenerated at build time (see Dockerfile) or ignored.
 data/*.db

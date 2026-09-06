@@ -25,7 +25,15 @@ model:                       # Real inference (used when demo.enabled = false)
   classes: [0]                # COCO class ids to keep (0 = person); empty = all
   yolo_model: models/yolo/yolov8n.pt
   person_class_id: 0
-  product_class_id: 999       # placeholder; set when a product model is trained
+  # Shelf-product detector for HONEST planogram compliance (separate checkpoint,
+  # detached from the person tracker; single "product" class). Trained via
+  # scripts/build_product_dataset.py + scripts/train_product_model.py. Missing
+  # file or placeholder id => supports_products=False => planogram reports
+  # MODEL_NOT_AVAILABLE (never fictional compliance).
+  product_model: models/yolo/yolov8n-product.pt
+  product_imgsz: 960          # products are small; train/infer at high res
+  product_conf_threshold: 0.30
+  product_class_id: 0         # "product" class id within the product checkpoint
 
 processing:                  # Real camera/video throughput control
   max_fps: 12                # cap on frames fed into the analytics loop (0 = as fast as possible)

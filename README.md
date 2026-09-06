@@ -83,7 +83,7 @@ platform reports that explicitly instead of fabricating numbers.
 | Wait time | ✅ implemented | rule-based **estimate** (`length × service_time / open_counters`) **and** per-person **measured** wait from queue-zone dwell (anonymous track ids) — both reported, never mixed |
 | Congestion prediction (5/10 min) | ✅ implemented | per-horizon trained models, `model / blend / fallback` source labels, 80% CIs, confidence, `explain_` factors; live MAE tracker |
 | Shelf FULL/LOW/OUT | ✅ implemented | `auto → classification (CNN) / detection / heuristic`; temporal confirmation, trend + time-to-out + risk |
-| Planogram compliance | ✅ honest | integrated into the live pipeline; reports `MODEL_NOT_AVAILABLE` until a *product* model exists — never claims "OK" without one |
+| Planogram compliance | ✅ real | honest gate: `supports_products` requires a loaded product checkpoint; detects real shelf products via `detect_products()` and reports violations into unified alerts |
 | Unified alerts | ✅ implemented | severity INFO/WARNING/HIGH, dedup, active + historical REST, optional webhook, congestion + shelf + CAMERA_OFFLINE |
 | Stores & cameras | ✅ implemented | store aggregates, per-camera ONLINE/ERROR/RECONNECTING states, `/cameras`, `/system/performance` |
 | Historical analytics | ✅ implemented | in-memory 1-min/1-hour buckets, hourly/daily summaries, JSON + CSV report downloads |
@@ -103,8 +103,14 @@ platform reports that explicitly instead of fabricating numbers.
   OFF/LOW/OUT-of-stock). It powers `strategy: auto → classification`. It was
   trained on a single store's angled shelf photos, so retrain on your site:
   `scripts/train_shelf_model.py --data data/shelf --epochs 40`.
-- Product detector for real planogram compliance needs a YOLO model fine-tuned
-  on the store's products (the demo simulates products).
+- Shelf-product detector for real planogram compliance is **trained**
+  (`models/yolo/yolov8n-product.pt`, yolov8n fine-tuned on 303 ShellSense
+  Misplacement boxes — mAP50=0.355, mAP50-95=0.216 held-out, honest
+  small-dataset numbers). Like the base `yolov8n.pt` it's a build/edge artifact
+  (not git/Docker-shipped), so the default demo honestly reports
+  MODEL_NOT_AVAILABLE; live/video modes activate it when present. Retrain
+  (recommended on larger SKU-110K data):
+  `scripts/build_product_dataset.py --src <images> && scripts/train_product_model.py`.
 - POS/ERP: endpoints accept whatever your vendor pushes; nothing is wired to a
   specific vendor until you set `alerts.webhook_url` / feed the ingest endpoints.
 - Zones, entrance line, service time and shelf thresholds need on-site
@@ -137,7 +143,7 @@ retail_intelligence/
 ├── database/                # SQLAlchemy models + repository + BackgroundWriter
 ├── webserver/               # web dashboard backend + static/ dashboard
 ├── scripts/                 # training, dataset prep, benchmark, ONNX export
-├── tests/                   # pytest suite (88 tests)
+├── tests/                   # pytest suite (93 tests)
 ├── models/                  # yolo + prediction checkpoints
 ├── data/                    # raw / processed / uploads / training
 └── deployment/              # docker + edge notes
@@ -154,7 +160,7 @@ GET  /analytics/queues                  per-queue counts, history, wait estimate
 GET  /analytics/queues/events           persisted per-change queue events (DB mode)
 GET  /analytics/shelves                 per-shelf status + summary (+ CNN source when used)
 GET  /analytics/shelves/events          persisted committed shelf transitions (DB mode)
-GET  /analytics/planogram               planogram compliance per shelf (MODEL_NOT_AVAILABLE without a product model)
+GET  /analytics/planogram               planogram compliance per shelf (real product detector wired; VIOLATIONS -> unified alerts)
 GET  /analytics/heatmap                 PNG heatmap of movement intensity
 GET  /analytics/history                 minute + hourly rolling history (JSON)
 GET  /analytics/daily                   daily summaries + peak hours

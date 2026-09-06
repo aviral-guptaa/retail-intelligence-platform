@@ -49,8 +49,17 @@ class YoloDetector:
         classes = model_settings.get("classes") or []
         self.classes: Optional[List[int]] = [int(c) for c in classes] or None
         self.model_path = resolve(model_settings.get("yolo_model", "models/yolo/yolov8n.pt"))
+        # Optional SEPARATE product checkpoint (single "product" class) used for
+        # honest planogram compliance. Not shared with the person tracker - a
+        # shelf-product class id 0 is meaningless to COCO person detection.
+        product_p = model_settings.get("product_model")
+        self.product_model_path = resolve(product_p) if product_p else None
+        self.product_imgsz = int(model_settings.get("product_imgsz", 960))
+        self.product_conf = float(model_settings.get("product_conf_threshold", 0.30))
         self.backend = "none"
         self._model = None           # ultralytics model (pt backend)
+        self._product_model = None   # ultralytics product checkpoint (planogram)
+        self._product_model_exc: Optional[str] = None  # why product model is absent
         self._ort_sess: Any = None   # onnxruntime session (onnx backend)
         self._load_error: Optional[str] = None
         self._load()
@@ -61,18 +70,22 @@ class YoloDetector:
 
     @property
     def supports_products(self) -> bool:
-        """True only when a real product class is configured.
+        """True only when a REAL product detector is actually available.
 
-        ``product_class_id`` defaults to the placeholder 999 (``models.py``
-        comment: "set when a product model is trained"). Planogram compliance
-        MUST NOT run off a placeholder, so callers use this gate to report
-        MODEL_NOT_AVAILABLE instead of pretending shelf compliance is ok.
+        ``product_class_id`` defaults to the placeholder 999 ("set when a product
+        model is trained"); planogram compliance MUST NOT run off a placeholder.
+        The gate is additionally honest about the model LOADING: a configured
+        ``product_model`` that is missing/broken/unloadable reports False so the
+        pipeline reports MODEL_NOT_AVAILABLE instead of pretending compliance.
         """
-        placeholder = self.settings.get("product_class_id", 999)
-        configured = self.product_class_id if self.product_class_id != 999 else None
+        configured_id = self.product_class_id if self.product_class_id != 999 else None
+        if configured_id is None:
+            return False
+        if self._product_model is not None:
+            return True
+        # Multi-class checkpoint path: the shared model itself emits the class.
         classes = self.settings.get("classes") or []
-        has_non_person_class = any(int(c) != self.person_class_id for c in classes)
-        return (configured is not None) or has_non_person_class
+        return any(int(c) == self.product_class_id for c in classes)
 
     def _load(self) -> None:
         path = self.model_path
@@ -87,9 +100,34 @@ class YoloDetector:
                 self._load_onnx(path)
             else:
                 self._load_ultralytics(path)
+            self._load_product()
         except ImportError:
             self._load_error = "required inference library not installed (see requirements.txt optional section)"
             self.backend = "none"
+
+    def _load_product(self) -> None:
+        """Load the separate product checkpoint (optional, honest gate).
+
+        Missing file or unloadable weights -> ``_product_model`` stays None and
+        ``supports_products`` is False (never report fake planogram compliance).
+        """
+        if self.product_model_path is None:
+            return
+        if not self.product_model_path.exists():
+            self._product_model_exc = f"product model not found at {self.product_model_path}"
+            logger.warning("product model configured but missing at %s",
+                           self.product_model_path)
+            return
+        try:
+            from ultralytics import YOLO  # type: ignore
+            self._product_model = YOLO(str(self.product_model_path))
+            logger.info("Loaded product detector %s (planogram gate OPEN)",
+                        self.product_model_path.name)
+        except ImportError:
+            self._product_model_exc = "ultralytics not installed (product detector unavailable)"
+        except Exception as exc:  # pragma: no cover
+            self._product_model_exc = f"failed to load product model: {exc}"
+            logger.warning("product model load failed: %s", exc)
 
     def _load_ultralytics(self, path: Path) -> None:
         try:
@@ -141,6 +179,8 @@ class YoloDetector:
         self._model = None
         self._ort_sess = None
         self._load_error = None
+        self._product_model = None
+        self._product_model_exc = None
         self._load()
 
     @property
@@ -227,12 +267,28 @@ class YoloDetector:
         return dets
 
     def detect_products(self, frame) -> List[Detection]:
-        """Run detection keeping only the configured product class (may be unset).
+        """Run detection keeping only the configured product class.
 
-        Returns an empty list unless the loaded checkpoint actually predicts the
-        ``product_class_id`` (a real product detector), so the shelf detector
-        knows whether "detection" strategy is viable.
+        Uses the dedicated product checkpoint when one is loaded; otherwise
+        falls back to filtering the shared checkpoint by ``product_class_id``.
+        Returns an empty list when no real product capability is configured
+        (``supports_products`` is False), so the shelf detector and planogram
+        never run fictionally.
         """
+        if self._product_model is not None:
+            dets: List[Detection] = []
+            for r in self._product_model.predict(frame, conf=self.product_conf, iou=self.iou,
+                                                 device=self.device, imgsz=self.product_imgsz,
+                                                 verbose=False):
+                names = r.names or {}
+                for box in r.boxes:
+                    cls_id = int(box.cls[0])
+                    if cls_id != self.product_class_id:
+                        continue
+                    x1, y1, x2, y2 = box.xyxy[0].tolist()
+                    dets.append(Detection(x1, y1, x2, y2, float(box.conf[0]),
+                                          cls_id, str(names.get(cls_id, "product"))))
+            return dets
         if self.backend == "onnx":
             if self.product_class_id < 0:
                 return []
@@ -262,6 +318,10 @@ class YoloDetector:
             "load_error": self._load_error,
             "device": self.device,
             "imgsz": self.imgsz,
+            "product_model": str(self.product_model_path) if self.product_model_path else None,
+            "product_ready": self._product_model is not None,
+            "product_error": self._product_model_exc,
+            "supports_products": self.supports_products,
         }
 
     def uses_synthetic(self) -> bool:

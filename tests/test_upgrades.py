@@ -409,6 +409,92 @@ def test_planogram_unconfigured_shelf_is_ok():
     assert res["violations"] == []
 
 
+# ------------------------------------------------------------------ product detector + planogram wiring
+def _fake_product_detector(*det_return):
+    class FakeProductDetector:
+        supports_products = True
+
+        def __init__(self, dets):
+            self._dets = list(dets)
+
+        def detect_products(self, frame):   # noqa: ARG001
+            return list(self._dets)
+
+    return FakeProductDetector(det_return)
+
+
+def test_product_detector_honest_gate_when_product_model_missing():
+    from ml.detection.yolo_detector import YoloDetector
+    # product_class_id is REAL (not 999) but the checkpoint file is missing:
+    # supports_products MUST be False -> planogram stays MODEL_NOT_AVAILABLE.
+    det = YoloDetector({"yolo_model": "models/yolo/yolov8n.pt",
+                        "product_model": "models/yolo/__missing_product.pt",
+                        "product_class_id": 0}, "store_01")
+    assert det.product_class_id != 999
+    assert det.supports_products is False
+    assert det.detect_products(np.zeros((100, 100, 3), dtype=np.uint8)) == []
+
+
+def test_product_detector_placeholder_gate_is_honest():
+    from ml.detection.yolo_detector import YoloDetector
+    # Default settings keep the placeholder product_class_id=999 -> no product
+    # claims, even though classes=[0] keep only persons.
+    det = YoloDetector({"yolo_model": "models/yolo/yolov8n.pt",
+                        "product_class_id": 999}, "store_01")
+    assert det.supports_products is False
+    assert det.detect_products(np.zeros((100, 100, 3), dtype=np.uint8)) == []
+
+
+def test_product_detector_real_gate_when_loaded():
+    from pathlib import Path
+    from ml.detection.yolo_detector import YoloDetector
+    if not Path("models/yolo/yolov8n-product.pt").exists():
+        return   # guard: product checkpoint not shipped in this checkout
+    det = YoloDetector({"yolo_model": "models/yolo/yolov8n.pt",
+                        "product_model": "models/yolo/yolov8n-product.pt",
+                        "product_class_id": 0}, "store_01")
+    assert det.supports_products is True
+    assert det.health()["product_ready"] is True
+
+
+def test_planogram_uses_detect_products_output():
+    from config.loader import load_settings, load_zones
+    from app.services.analytics_service import AnalyticsService
+
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    # 12 product boxes in shelf_a [[410,230],[690,230],[690,430],[410,430]]
+    stocked_a = [Detection(430 + i * 20, 250, 430 + i * 20 + 14, 264, 0.9, 0, "product")
+                 for i in range(12)]
+    # 12 product boxes in shelf_b [[770,230],[1040,230],[1040,430],[770,430]]
+    stocked_b = [Detection(780 + i * 20, 250, 780 + i * 20 + 14, 264, 0.9, 0, "product")
+                 for i in range(12)]
+
+    # Product-capable detector that finds full stock -> OK (not MODEL_NOT_AVAILABLE)
+    settings = load_settings()
+    svc = AnalyticsService("store_01", settings, load_zones(), source=None,
+                           detector=_fake_product_detector(*(stocked_a + stocked_b)))
+    svc._last_frame = frame
+    svc._check_planogram_status([], time.time())
+    assert svc.planogram_status["product_model"] is True
+    assert svc.planogram_status["status"] == "OK"
+    assert all(r["status"] == "OK" for r in svc.planogram_status["results"])
+
+    # Product-capable detector that finds nothing -> honest MISSING_ITEM violation
+    svc2 = AnalyticsService("store_01", settings, load_zones(), source=None,
+                            detector=_fake_product_detector())
+    svc2._last_frame = frame
+    svc2._check_planogram_status([], time.time())
+    assert svc2.planogram_status["product_model"] is True
+    assert svc2.planogram_status["status"] == "VIOLATIONS"
+
+    # No detector at all -> MODEL_NOT_AVAILABLE (never fictional compliance)
+    svc3 = AnalyticsService("store_01", settings, load_zones(), source=None, detector=None)
+    svc3._last_frame = frame
+    svc3._check_planogram_status([], time.time())
+    assert svc3.planogram_status["product_model"] is False
+    assert svc3.planogram_status["status"] == "MODEL_NOT_AVAILABLE"
+
+
 def test_shelf_strategy_auto_prefers_detection_with_products():
     # A real shelf CNN exists in repo; force model_path to a missing file so
     # auto() falls back to detection when product detections are present.

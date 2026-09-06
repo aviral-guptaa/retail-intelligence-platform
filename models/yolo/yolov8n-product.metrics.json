@@ -1,0 +1,18 @@
+{
+  "source": "ShellSense Misplacement boxes (single class: product)",
+  "n_train_images": 99,
+  "n_val_images": 16,
+  "train_boxes": 303,
+  "val_boxes": 27,
+  "dataset": "data/shelf_det/shelf_det.yaml",
+  "epochs": 40,
+  "imgsz": 960,
+  "device": "mps",
+  "mAP50": 0.3554,
+  "mAP50_95": 0.2159,
+  "precision": 0.3717,
+  "recall": 0.4384,
+  "classes": [
+    "product"
+  ]
+}
