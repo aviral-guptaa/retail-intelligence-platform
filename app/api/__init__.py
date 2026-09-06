@@ -13,6 +13,7 @@ from app.api.routes import router
 from app.api.websocket import hub
 from app.services.inference_service import InferencePipeline
 from config.loader import load_settings
+from ml.integrations.pos import IntegrationHub
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ def create_app(pipeline: InferencePipeline) -> FastAPI:
     settings = load_settings()
     app.state.pipeline = pipeline
     app.state.settings = settings
+    app.state.integrations = IntegrationHub()
 
     app.add_middleware(
         CORSMiddleware,

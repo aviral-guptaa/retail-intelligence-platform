@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from ml.integrations.pos import IntegrationHub
 from ml.analytics.history import AnalyticsHistory
 from ml.analytics.performance import CameraMonitor, PerformanceSummary
 from app.services.alert_manager import AlertStore
@@ -114,6 +115,45 @@ def test_camera_offline_flow_through_alert_store():
     store.resolve("camera_state", "camera")
     assert store.snapshot()["active_count"] == 0
     assert store.historical()[0]["type"] == "camera"
+
+# ---------------------------------------------------------------- POS / ERP
+def test_pos_ingest_and_conversion_only_with_data():
+    hub = IntegrationHub({})
+    # no data -> honest "unavailable", not a fake number
+    assert hub.pos_stats()["available"] is False
+    assert hub.conversion_rate(50)["available"] is False
+    ok = hub.ingest_transaction({"transaction_id": "t1", "amount": "12.50", "items": 2})
+    assert ok["ok"] is True
+    stats = hub.pos_stats(hours=1)
+    assert stats["available"] is True
+    assert stats["transactions"] == 1
+    assert stats["total_amount"] == 12.5
+    conv = hub.conversion_rate(100)
+    assert conv["conversion_pct"] == pytest.approx(1.0)     # 1 / 100
+
+
+def test_pos_rejects_malformed_payload():
+    hub = IntegrationHub({})
+    bad = hub.ingest_transaction({"amount": "not-a-number"})
+    assert bad["ok"] is False
+    assert hub.status()["pos_transactions_received"] == 0
+
+
+def test_erp_inventory_ingest_and_stats():
+    hub = IntegrationHub({})
+    assert hub.inventory_stats()["available"] is False
+    ok = hub.ingest_inventory({"items": [
+        {"sku": "SKU1", "stock": 3},
+        {"sku": "SKU2", "stock": 40},
+        {"sku": "SKU3", "stock": 0},
+    ]})
+    assert ok["ok"] is True
+    stats = hub.inventory_stats()
+    assert stats["available"] is True
+    assert stats["skus"] == 3
+    assert stats["low_stock_skus"] == 2     # SKU1(3) + SKU3(0) both <= 5
+    assert stats["out_of_stock_skus"] == 1  # SKU3 = 0
+
 
 # ---------------------------------------------------------------- history store
 def test_history_buckets_aggregate_and_roll():

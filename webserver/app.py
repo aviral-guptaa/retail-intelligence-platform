@@ -47,6 +47,7 @@ class RunManager:
             "finished": False, "error": None,
         }
         self._lock = threading.Lock()
+        self.integrations = __import__("ml.integrations.pos", fromlist=["IntegrationHub"]).IntegrationHub()
 
     def _new_pipeline(self) -> InferencePipeline:
         repo = Repository(None)
@@ -222,6 +223,34 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
         if not p or not p.services:
             return {"cameras": {}, "summary": {}}
         return p.performance()
+
+    @app.post("/api/integrations/pos/transactions")
+    def pos_ingest(payload: Dict[str, Any]) -> Dict[str, Any]:
+        return manager.integrations.ingest_transaction(payload)
+
+    @app.get("/api/integrations/pos/conversion")
+    def pos_conversion() -> Dict[str, Any]:
+        entries = 0
+        p = manager.pipeline
+        if p and p.services:
+            for svc in p.services.values():
+                entries += svc.footfall.snapshot().get("total_entries", 0)
+        return manager.integrations.conversion_rate(entries)
+
+    @app.post("/api/integrations/erp/inventory")
+    def erp_ingest(payload: Dict[str, Any]) -> Dict[str, Any]:
+        return manager.integrations.ingest_inventory(payload)
+
+    @app.get("/api/integrations/erp/inventory")
+    def erp_inventory() -> Dict[str, Any]:
+        return manager.integrations.inventory_stats()
+
+    @app.get("/api/integrations/status")
+    def integrations_status() -> Dict[str, Any]:
+        out = manager.integrations.status()
+        out.update({"pos_stats": manager.integrations.pos_stats(),
+                    "inventory": manager.integrations.inventory_stats()})
+        return out
 
     @app.get("/api/analytics/planogram")
     def analytics_planogram() -> Dict[str, Any]:

@@ -227,6 +227,50 @@ def alerts_historical(request: Request, camera_id: Optional[str] = None,
             "alerts": svc.alert_store.historical(limit=limit, alert_type=alert_type)}
 
 
+@router.post("/integrations/pos/transactions")
+def pos_ingest(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Generic POS/webhook ingest point (vendor-agnostic, adapter only)."""
+    return _get_integrations(request).ingest_transaction(payload)
+
+
+@router.get("/integrations/pos/conversion")
+def pos_conversion(request: Request) -> Dict[str, Any]:
+    """Footfall-to-transaction conversion (only when POS data exists)."""
+    pipeline = _get_pipeline(request)
+    entries = 0
+    for svc in pipeline.services.values():
+        entries += svc.footfall.snapshot().get("total_entries", 0)
+    return _get_integrations(request).conversion_rate(entries)
+
+
+@router.post("/integrations/erp/inventory")
+def erp_ingest(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Generic ERP/webhook inventory snapshot ingest (adapter only)."""
+    return _get_integrations(request).ingest_inventory(payload)
+
+
+@router.get("/integrations/erp/inventory")
+def erp_inventory(request: Request) -> Dict[str, Any]:
+    return _get_integrations(request).inventory_stats()
+
+
+@router.get("/integrations/status")
+def integrations_status(request: Request) -> Dict[str, Any]:
+    hub = _get_integrations(request)
+    out = hub.status()
+    out.update({"pos_stats": hub.pos_stats(), "inventory": hub.inventory_stats()})
+    return out
+
+
+def _get_integrations(request: Request):
+    hub = getattr(request.app.state, "integrations", None)
+    if hub is None:                      # apps that never mounted the hub
+        from ml.integrations.pos import IntegrationHub
+        hub = IntegrationHub()
+        request.app.state.integrations = hub
+    return hub
+
+
 @router.get("/config/zones")
 def get_zones(request: Request) -> Dict[str, Any]:
     from config.loader import load_zones
