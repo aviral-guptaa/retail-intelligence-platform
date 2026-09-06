@@ -311,21 +311,11 @@ class AnalyticsService:
             logger.debug("queue datalog skipped: %s", exc)
 
     def _persist(self, now: float) -> None:
-        if self.db_writer is None:
-            return
         db_interval = self.snapshot_interval
+        # History buckets must fill in EVERY flow (CLI+DB and in-memory web
+        # dashboard), so record them on the snapshot cadence, writer or not.
         if db_interval <= 0 or now - self._last_db_snapshot >= db_interval:
             self._last_db_snapshot = now
-            self._submit_snapshot(now)
-        if self.trajectory_sampling > 0 and self._frame_no % self.trajectory_sampling == 0:
-            for tid, tr in ((t.id, t) for t in self._last_tracks[:10]):
-                self.db_writer.submit("position", timestamp=_utcnow(),
-                                      camera_id=self.camera_id, track_id=int(tid),
-                                      x=round(float(tr.center[0]), 2),
-                                      y=round(float(tr.center[1]), 2))
-
-    def _submit_snapshot(self, now: float) -> None:
-        try:
             queues = self.current()["queues"]
             unique = int(self.reid.unique_shoppers()) if self.reid else 0
             self.history.record(
@@ -337,6 +327,18 @@ class AnalyticsService:
                 pred_max=queues["predicted_max"],
                 status=self.alert_status,
                 now=now)
+            if self.db_writer is not None:
+                self._submit_snapshot(now)
+        if self.db_writer is not None and self.trajectory_sampling > 0 and self._frame_no % self.trajectory_sampling == 0:
+            for tid, tr in ((t.id, t) for t in self._last_tracks[:10]):
+                self.db_writer.submit("position", timestamp=_utcnow(),
+                                      camera_id=self.camera_id, track_id=int(tid),
+                                      x=round(float(tr.center[0]), 2),
+                                      y=round(float(tr.center[1]), 2))
+
+    def _submit_snapshot(self, now: float) -> None:
+        try:
+            queues = self.current()["queues"]
             self.alert_store.retry_pending()   # re-deliver failed webhooks
             self.db_writer.submit("snapshot",
                                   timestamp=_utcnow(), camera_id=self.camera_id,
