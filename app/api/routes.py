@@ -138,6 +138,35 @@ def video_stream(request: Request, camera_id: Optional[str] = None,
     )
 
 
+@router.get("/analytics/history")
+def analytics_history(request: Request, camera_id: Optional[str] = None) -> Dict[str, Any]:
+    pipeline = _get_pipeline(request)
+    if not pipeline.services:
+        raise HTTPException(503, "No cameras configured")
+    return pipeline.services[_first_camera(pipeline, camera_id)].historical()
+
+
+@router.get("/analytics/report.csv")
+def analytics_report_csv(request: Request, camera_id: Optional[str] = None) -> Response:
+    """Download historical analytics as CSV (minute + hourly buckets)."""
+    pipeline = _get_pipeline(request)
+    if not pipeline.services:
+        raise HTTPException(503, "No cameras configured")
+    svc = pipeline.services[_first_camera(pipeline, camera_id)]
+    return Response(content=svc.report_csv(),
+                    media_type="text/csv",
+                    headers={"Content-Disposition":
+                             f"attachment; filename=analytics_{svc.camera_id}.csv"})
+
+
+@router.get("/analytics/daily")
+def analytics_daily(request: Request, camera_id: Optional[str] = None) -> Dict[str, Any]:
+    pipeline = _get_pipeline(request)
+    svc = pipeline.services[_first_camera(pipeline, camera_id)]
+    return {"camera_id": svc.camera_id, "daily": svc.history.daily_summary(),
+            "peak_hours": svc.history.peak_hours()}
+
+
 @router.get("/alerts")
 def alerts(request: Request, limit: int = 50) -> Dict[str, Any]:
     pipeline = _get_pipeline(request)

@@ -183,6 +183,33 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
             return {"live": False}
         return {"live": True, **next(iter(p.services.values())).current()}
 
+    @app.get("/api/analytics/history")
+    def analytics_history() -> Dict[str, Any]:
+        p = manager.pipeline
+        if not p or not p.services:
+            return {"live": False, "minutes": [], "hourly": [], "daily": [],
+                    "peak_hours": [], "activity": {}}
+        return {"live": True, **next(iter(p.services.values())).historical()}
+
+    @app.get("/api/analytics/daily")
+    def analytics_daily() -> Dict[str, Any]:
+        p = manager.pipeline
+        if not p or not p.services:
+            return {"live": False, "daily": [], "peak_hours": []}
+        svc = next(iter(p.services.values()))
+        return {"live": True, "daily": svc.history.daily_summary(),
+                "peak_hours": svc.history.peak_hours()}
+
+    @app.get("/api/analytics/report.csv")
+    def analytics_report_csv() -> Response:
+        p = manager.pipeline
+        if not p or not p.services:
+            raise HTTPException(404, "no live run")
+        svc = next(iter(p.services.values()))
+        return Response(content=svc.report_csv(), media_type="text/csv",
+                        headers={"Content-Disposition":
+                                 f"attachment; filename=analytics_{svc.camera_id}.csv"})
+
     @app.get("/api/run/media")
     def run_media() -> FileResponse:
         """Stream the currently-running uploaded video so the dashboard can show

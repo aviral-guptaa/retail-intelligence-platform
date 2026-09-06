@@ -23,6 +23,7 @@ from ml.queue.predictor import QueuePredictor
 from ml.queue.queue_counter import QueueCounter
 from ml.queue.wait_time import WaitTimeEstimator
 from ml.queue.measurer import QueueWaitMeasurer
+from ml.analytics.history import AnalyticsHistory
 from ml.shelf.planogram import PlanogramChecker
 from ml.shelf.shelf_classifier import ShelfClassifier
 from ml.shopper.dwell_time import ZoneDwellTracker
@@ -141,6 +142,7 @@ class AnalyticsService:
         self._frame_jpeg_cache: Dict[int, Any] = {}
         self.alert_status = "NORMAL"
         self._last_alert_ts = 0.0
+        self.history = AnalyticsHistory(camera_id)   # always-on historical store
         self.started = time.time()
 
     # ---------------------------------------------------------------- config
@@ -246,6 +248,16 @@ class AnalyticsService:
     def _submit_snapshot(self, now: float) -> None:
         try:
             queues = self.current()["queues"]
+            unique = int(self.reid.unique_shoppers()) if self.reid else 0
+            self.history.record(
+                entries=self.footfall.snapshot().get("total_entries", 0),
+                exits=self.footfall.snapshot().get("total_exits", 0),
+                occupancy=self.line_counter.occupancy() if self.line_counter else len(self._last_tracks),
+                unique=unique,
+                queue_total=queues["total"],
+                pred_max=queues["predicted_max"],
+                status=self.alert_status,
+                now=now)
             self.db_writer.submit("snapshot",
                                   timestamp=_utcnow(), camera_id=self.camera_id,
                                   footfall_count=self.footfall.current_active,
@@ -386,6 +398,42 @@ class AnalyticsService:
             "shelves": self.shelves.snapshot(),
             "congestion_status": status,
         }
+
+    # ------------------------------------------------------- historical store
+    def historical(self) -> Dict[str, Any]:
+        """Aggregated historical analytics from the always-on in-memory store."""
+        return {
+            "camera_id": self.camera_id,
+            "minutes": self.history.minute_series(),
+            "hourly": self.history.hourly_series(),
+            "daily": self.history.daily_summary(),
+            "peak_hours": self.history.peak_hours(),
+            "activity": self.history.activity(),
+        }
+
+    @staticmethod
+    def _history_csv_rows(history: AnalyticsHistory) -> List[List[str]]:
+        """CSV-ready rows (one per bucket) over the full minute + hour history."""
+        header = ["bucket_ts", "granularity", "entries", "exits",
+                  "avg_occupancy", "peak_occupancy", "peak_unique",
+                  "avg_queue", "peak_queue", "peak_predicted_queue",
+                  "congested_minutes"]
+        rows = [header]
+        for m in history.minute_series():
+            rows.append([m["ts"], "minute"] + [m[k] for k in header[3:]])
+        for h in history.hourly_series():
+            rows.append([h["ts"], "hour"] + [h[k] for k in header[3:]])
+        return rows
+
+    def report_csv(self) -> str:
+        """Historical analytics as a CSV string (for report downloads)."""
+        import csv
+        import io
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerows(self._history_csv_rows(self.history))
+        return buf.getvalue()
 
     @staticmethod
     def _queue_status(pred_10min: float, length: int) -> str:

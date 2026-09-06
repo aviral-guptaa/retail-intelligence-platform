@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from ml.analytics.history import AnalyticsHistory
 from app.schemas.models import Detection, Track
 from app.services.analytics_service import parse_zones
 from ml.queue.datalogger import QueueDataLogger
@@ -36,6 +37,55 @@ def _track(x, y, tid):
     return Track(id=tid, x1=d.x1, y1=d.y1, x2=d.x2, y2=d.y2,
                  confidence=d.confidence, class_id=d.class_id,
                  class_name=d.class_name, ts=d.ts, hit_streak=1, missed_frames=0)
+
+
+# ---------------------------------------------------------------- history store
+def test_history_buckets_aggregate_and_roll():
+    import time as _t
+    h = AnalyticsHistory("store_01", minute_buckets=40, hour_buckets=24)
+    base = _t.time()
+    # 10 snapshots 1 minute apart => different minute buckets, same hour bucket
+    for i in range(10):
+        h.record(entries=2 * i, exits=i, occupancy=3, unique=5,
+                 queue_total=i, pred_max=i + 1, status="NORMAL", now=base + 60 * i)
+    m = h.minute_series(minutes=120)
+    assert len(m) == 10
+    assert m[-1]["entries"] == 18                       # 2 * 9
+    assert m[-1]["peak_queue"] == 9
+    hh = h.hourly_series(days=7)
+    assert len(hh) == 1
+    assert hh[0]["peak_occupancy"] == 3
+    assert hh[0]["avg_occupancy"] == pytest.approx(3.0)
+
+
+def test_history_daily_summary_and_peak_hours():
+    import time as _t
+    h = AnalyticsHistory("store_01")
+    now = _t.time() // 3600 * 3600 - 3600    # back up one hour so both fit the day
+    # two different hours, 100 entries/hour, to exercise peak-hour ranking
+    for hour_off in (0, 3600):
+        for i in range(3):
+            h.record(entries=100, exits=95, occupancy=2, unique=2,
+                     queue_total=4, pred_max=5, status="HIGH",
+                     now=now + hour_off + i)
+    daily = h.daily_summary(days=1)
+    assert len(daily) >= 1
+    assert daily[-1]["visits"] == 600
+    assert daily[-1]["peak_queue"] == 4
+    assert daily[-1]["congested_minutes_est"] > 0
+    peaks = h.peak_hours()
+    assert all(p["avg_footfall"] > 0 for p in peaks)
+
+
+def test_history_serves_report_rows():
+    from app.services.analytics_service import AnalyticsService
+    from config.loader import load_settings, load_zones
+
+    svc = AnalyticsService("store_01", load_settings(), load_zones(), source=None, detector=None)
+    svc.history.record(1, 0, 1, 1, 2, 3.0, "WARNING", time.time())
+    rows = svc._history_csv_rows(svc.history)
+    assert rows[0][0] == "bucket_ts"
+    assert len(rows) >= 3                    # header + minute + hour
 
 
 # ------------------------------------------------------------------ measured wait
