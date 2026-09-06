@@ -30,9 +30,16 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+try:
+    import cv2 as _cv2
+except Exception:  # pragma: no cover - non-camera env
+    _cv2 = None
+
 from app.schemas.models import Detection, ShelfSnapshot
 from config.loader import resolve
 from ml.geometry import point_in_polygon
+
+cv2 = _cv2
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +132,9 @@ class ShelfClassifier:
 
     def classify_by_cnn(self, frame: np.ndarray, shelf_id: str) -> Optional[ShelfSnapshot]:
         """Classification strategy: score the shelf ROI crop with the CNN."""
+        if cv2 is None:
+            self._cnn_error = "opencv is required for the shelf CNN"
+            return None
         if self._cnn is None or frame is None:
             return None
         crop = self._crop(frame, self.regions[shelf_id])
@@ -134,13 +144,14 @@ class ShelfClassifier:
             import torch
             from torchvision import transforms
 
+            rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+            rgb = cv2.resize(rgb, (96, 96), interpolation=cv2.INTER_AREA)
             tf = transforms.Compose([
                 transforms.ToTensor(),
-                transforms.Resize((96, 96)),
                 transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
             ])
             with torch.no_grad():
-                out = self._cnn(tf(crop / 255.0).unsqueeze(0))
+                out = self._cnn(tf(rgb).float().unsqueeze(0))
                 prob = torch.softmax(out, dim=1)[0]
                 idx = int(prob.argmax().item())
             label = self._label_to_status.get(self._cnn_classes[idx].upper(), "FULL")

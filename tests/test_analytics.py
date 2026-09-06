@@ -95,7 +95,7 @@ def test_heatmap_accumulates_and_renders():
 
 def test_shelf_classifier_statuses():
     shelves = {"a": {"region": [[0, 0], [40, 0], [40, 40], [0, 40]], "expected_item_count": 10}}
-    sc = ShelfClassifier(shelves, {}, "store_01")
+    sc = ShelfClassifier(shelves, {"model_path": "models/prediction/__missing_cnn.pt"}, "store_01")
     # 0 products -> OUT_OF_STOCK
     snap = sc.classify_by_counting([], "a")
     assert snap.status == "OUT_OF_STOCK"

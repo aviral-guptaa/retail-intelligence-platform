@@ -98,9 +98,11 @@ platform reports that explicitly instead of fabricating numbers.
   trained on a **realistic M/M/c synthetic** checkout dataset (positive R², beats
   the "queue stays the same" baseline). Real accuracy comes from re-training on
   `data/processed/queue_features.csv` collected in the live store.
-- Shelf CNN: `models/prediction/shelf_classifier.pt` is **not trained** — the
-  shelf module falls back to heuristic counting until you train it with
-  `scripts/train_shelf_model.py`.
+- Shelf CNN: `models/prediction/shelf_classifier.pt` is **trained** (MobileNetV3,
+  3 classes, ~71% held-out accuracy on free ShellSense supermarket-shelf crops —
+  OFF/LOW/OUT-of-stock). It powers `strategy: auto → classification`. It was
+  trained on a single store's angled shelf photos, so retrain on your site:
+  `scripts/train_shelf_model.py --data data/shelf --epochs 40`.
 - Product detector for real planogram compliance needs a YOLO model fine-tuned
   on the store's products (the demo simulates products).
 - POS/ERP: endpoints accept whatever your vendor pushes; nothing is wired to a
@@ -236,8 +238,9 @@ python scripts/train_queue_model.py --samples 2000
 #   (The legacy single-file queue_model.joblib is superseded; delete it.)
 
 # Shelf classifier (needs torch): ImageFolder training -> accuracy/F1 + .metrics.json
-python scripts/train_shelf_model.py --data data/shelf --epochs 10
-python scripts/make_shelf_dataset.py --out data/shelf     # build a small labelled set from a video
+python scripts/train_shelf_model.py --data data/shelf --epochs 10 --seed 7   # A trained shelf_classifier.pt ships
+python scripts/build_shelf_dataset.py --src <ShellSense-shelf-folder> --out data/shelf
+    # rebuild data/shelf/{FULL,LOW_STOCK,OUT_OF_STOCK} from Out-of-stock/Misplacement box XMLs
 
 # Edge export (requires ultralytics + a downloaded yolov8n.pt)
 python scripts/export_onnx.py --model models/yolo/yolov8n.pt --format onnx --half

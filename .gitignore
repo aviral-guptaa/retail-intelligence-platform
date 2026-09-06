@@ -13,6 +13,8 @@ data/*.db
 data/raw/*
 data/processed/*
 data/uploads/*
+# regenerable via scripts/build_shelf_dataset.py
+data/shelf/
 models/prediction/*.joblib
 models/yolo/*.pt
 models/yolo/*.onnx

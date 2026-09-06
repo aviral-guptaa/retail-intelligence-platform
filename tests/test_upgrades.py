@@ -410,8 +410,11 @@ def test_planogram_unconfigured_shelf_is_ok():
 
 
 def test_shelf_strategy_auto_prefers_detection_with_products():
+    # A real shelf CNN exists in repo; force model_path to a missing file so
+    # auto() falls back to detection when product detections are present.
     shelves = {"a": {"region": [[0, 0], [40, 0], [40, 40], [0, 40]], "expected_item_count": 10}}
-    sc = ShelfClassifier(shelves, {"strategy": "auto"}, "c")
+    sc = ShelfClassifier(shelves, {"strategy": "auto",
+                                   "model_path": "models/prediction/__missing_cnn.pt"}, "c")
     prods = [Detection(5 + i * 3, 5, 5 + i * 3 + 6, 11, 0.9, 999, "product")
              for i in range(10)]
     assert sc.resolve_strategy(has_product_detections=True) == "detection"
@@ -422,13 +425,24 @@ def test_shelf_strategy_auto_prefers_detection_with_products():
 
 
 def test_shelf_strategy_auto_falls_to_heuristic_without_products():
+    # Same missing-CNN setup -> auto() lands on heuristic without products.
     shelves = {"a": {"region": [[0, 0], [40, 0], [40, 40], [0, 40]], "expected_item_count": 10}}
-    sc = ShelfClassifier(shelves, {"strategy": "auto"}, "c")
+    sc = ShelfClassifier(shelves, {"strategy": "auto",
+                                   "model_path": "models/prediction/__missing_cnn.pt"}, "c")
     assert sc.resolve_strategy(has_product_detections=False) == "heuristic"
     frame = np.zeros((100, 100, 3), dtype=np.uint8)
     sc.update(frame, [], 100.0)
     assert sc.active_strategy == "heuristic"
     assert len(sc.snapshot()) == 1
+
+
+def test_shelf_strategy_auto_prefers_cnn_when_trained():
+    # With the shipped shelf_classifier.pt present, auto() must choose the CNN.
+    shelves = {"a": {"region": [[0, 0], [40, 0], [40, 40], [0, 40]], "expected_item_count": 10}}
+    sc = ShelfClassifier(shelves, {"strategy": "auto"}, "c")
+    if sc._cnn is not None:
+        assert sc.resolve_strategy(has_product_detections=False) == "classification"
+        assert sc.resolve_strategy(has_product_detections=True) == "classification"
 
 
 # ------------------------------------------------------------------ tracker factory

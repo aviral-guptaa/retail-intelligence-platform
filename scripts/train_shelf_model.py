@@ -50,6 +50,14 @@ def _train_from_dir(data_dir: Path, args) -> int:
     tf = transforms.Compose([transforms.Resize((96, 96)),
                              transforms.ToTensor(),
                              transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])])
+    tf_train = transforms.Compose([
+        transforms.Resize((96, 96)),
+        transforms.RandomHorizontalFlip(p=0.3),
+        transforms.RandomRotation(degrees=6),
+        transforms.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.1),
+        transforms.ToTensor(),
+        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])])
+    train_folder = datasets.ImageFolder(str(data_dir), transform=tf_train)
     full = datasets.ImageFolder(str(data_dir), transform=tf)
     if len(full.classes) < 2:
         log.error("expected FULL/LOW_STOCK/OUT_OF_STOCK subfolders in %s (got %s)",
@@ -57,11 +65,22 @@ def _train_from_dir(data_dir: Path, args) -> int:
         return 1
     n = len(full)
     n_val = max(1, int(n * 0.2))
-    train_ds, val_ds = random_split(full, [n - n_val, n_val])
-    loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
+    if getattr(args, "seed", None) is not None:
+        torch.manual_seed(args.seed)
+    indices = list(range(n))
+    rng = torch.Generator().manual_seed(getattr(args, "seed", 0) or 0)
+    train_idx, val_idx = random_split(indices, [n - n_val, n_val], generator=rng)
+    train_ds = torch.utils.data.Subset(train_folder, train_idx.indices)
+    val_ds = torch.utils.data.Subset(full, val_idx.indices)
+    loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, generator=rng)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False)
 
     model = _build_model(args.backbone, len(full.classes))
+    device = "cuda" if torch.cuda.is_available() else \
+        ("mps" if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available() else "cpu")
+    model = model.to(device)
+    if device != "cpu":
+        log.info("training on %s accelerator", device)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     loss_fn = torch.nn.CrossEntropyLoss()
     scheduler = torch.optim.lr_scheduler.StepLR(opt, step_size=max(1, args.epochs // 3), gamma=0.5)
@@ -69,7 +88,9 @@ def _train_from_dir(data_dir: Path, args) -> int:
     for epoch in range(args.epochs):
         model.train()
         total, correct = 0, 0
+        run_loss = 0.0
         for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
             opt.zero_grad()
             out = model(xb)
             loss = loss_fn(out, yb)
@@ -77,14 +98,16 @@ def _train_from_dir(data_dir: Path, args) -> int:
             opt.step()
             total += yb.size(0)
             correct += (out.argmax(1) == yb).sum().item()
+            run_loss += loss.item() * yb.size(0)
         scheduler.step()
-        log.info("epoch %d  loss=%.4f  train_acc=%.3f", epoch, loss.item(), correct / total)
+        log.info("epoch %d  loss=%.4f  train_acc=%.3f", epoch, run_loss / total, correct / total)
 
     model.eval()
     with torch.no_grad():
         preds, targets = [], []
         for xb, yb in val_loader:
-            preds.extend(model(xb).argmax(1).tolist())
+            xb = xb.to(device)
+            preds.extend(model(xb).argmax(1).cpu().tolist())
             targets.extend(yb.tolist())
 
     from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_recall_fscore_support
@@ -104,8 +127,8 @@ def _train_from_dir(data_dir: Path, args) -> int:
 
     out_path = Path(ROOT) / args.out
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"state_dict": model.state_dict(), "classes": full.classes,
-                "backbone": args.backbone}, str(out_path))
+    torch.save({"state_dict": {k: v.detach().cpu() for k, v in model.state_dict().items()},
+                "classes": full.classes, "backbone": args.backbone}, str(out_path))
     (out_path.with_suffix(".metrics.json")).write_text(json.dumps(metrics, indent=2))
     log.info("saved model -> %s", out_path)
     return 0
@@ -120,6 +143,8 @@ def main() -> int:
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--backbone", choices=BACKBONES, default="mobilenet_v3_small")
     ap.add_argument("--out", default="models/prediction/shelf_classifier.pt")
+    ap.add_argument("--seed", type=int, default=0,
+                    help="deterministic train/val split + shuffle (0 = unseeded)")
     args = ap.parse_args()
 
     data_dir = Path(args.data) if args.data else None
