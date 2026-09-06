@@ -24,6 +24,7 @@ from ml.queue.queue_counter import QueueCounter
 from ml.queue.wait_time import WaitTimeEstimator
 from ml.queue.measurer import QueueWaitMeasurer
 from ml.analytics.history import AnalyticsHistory
+from app.services.alert_manager import AlertStore
 from ml.shelf.planogram import PlanogramChecker
 from ml.shelf.shelf_classifier import ShelfClassifier
 from ml.shopper.dwell_time import ZoneDwellTracker
@@ -142,6 +143,7 @@ class AnalyticsService:
         self._frame_jpeg_cache: Dict[int, Any] = {}
         self.alert_status = "NORMAL"
         self._last_alert_ts = 0.0
+        self.alert_store = AlertStore(settings.get("alerts", {}))
         self.history = AnalyticsHistory(camera_id)   # always-on historical store
         self.started = time.time()
 
@@ -203,6 +205,7 @@ class AnalyticsService:
         self.heatmap.update(self._last_tracks)
 
         self.shelves.update(frame, detections, now)
+        self._emit_shelf_alerts()
         self._maybe_export_heatmap(now)
 
         self._log_queue_features(now)
@@ -221,6 +224,33 @@ class AnalyticsService:
             tr.global_id = self.reid.update(frame, tr.bbox(), self.camera_id, now)
 
     # ------------------------------------------------------------- persistence
+    def _emit_shelf_alerts(self) -> None:
+        """Emit unified store alerts on shelf LOW_STOCK / OUT_OF_STOCK transitions
+        (only for committed states), and resolve them when a shelf recovers."""
+        sev_by = {"LOW_STOCK": "WARNING", "OUT_OF_STOCK": "HIGH"}
+        seen = set()
+        for snap in self.shelves.states.values():
+            key = f"shelf:{snap.shelf_id}"
+            seen.add(key)
+            if snap.status in sev_by:
+                msg = (f"Shelf {snap.shelf_id} {snap.status} "
+                       f"(~{snap.item_count}/{snap.expected_count} items, "
+                       f"source={snap.source})")
+                self.alert_store.emit("shelf", sev_by[snap.status], msg,
+                                      self.camera_id,
+                                      store_id=self.settings.get("app", {}).get("store_id"),
+                                      source=snap.source,
+                                      dedup_key=key)
+            else:
+                self.alert_store.resolve(key, "shelf")
+        # shelves that disappeared from committed states resolve their alerts
+        active_keys = {a.dedup_key for a in self.alert_store.active()
+                       if a.alert_type == "shelf" and a.dedup_key}
+        for key in active_keys:
+            sid = key.split(":", 1)[1]
+            if sid not in self.shelves.states:
+                self.alert_store.resolve(key, "shelf")
+
     def _log_queue_features(self, now: float) -> None:
         try:
             growth, _, _, _ = self._queue_metrics()
@@ -258,6 +288,7 @@ class AnalyticsService:
                 pred_max=queues["predicted_max"],
                 status=self.alert_status,
                 now=now)
+            self.alert_store.retry_pending()   # re-deliver failed webhooks
             self.db_writer.submit("snapshot",
                                   timestamp=_utcnow(), camera_id=self.camera_id,
                                   footfall_count=self.footfall.current_active,
@@ -397,6 +428,7 @@ class AnalyticsService:
             },
             "shelves": self.shelves.snapshot(),
             "congestion_status": status,
+            "alerts": self.alert_store.snapshot(),
         }
 
     # ------------------------------------------------------- historical store
@@ -444,20 +476,33 @@ class AnalyticsService:
         return "NORMAL"
 
     def _emit_alerts(self, status, recommendation, qtotal) -> None:
-        if self.alert_status != status:
-            cooldown = float(self.settings.get("alerts", {}).get("cooldown_seconds", 60))
-            now_ts = time.time()
-            deduped = self._last_alert_ts > 0 and (now_ts - self._last_alert_ts) < cooldown
+        if self.alert_status == status:
+            return
+        cooldown = float(self.settings.get("alerts", {}).get("cooldown_seconds", 60))
+        now_ts = time.time()
+        deduped = self._last_alert_ts > 0 and (now_ts - self._last_alert_ts) < cooldown
+
+        # Unified in-memory alert store: emit on escalation, resolve on recovery.
+        if status in ("WARNING", "HIGH"):
+            sev = "HIGH" if status == "HIGH" else "WARNING"
             if not deduped:
-                ts = _utcnow()
-                if self.db_writer is not None:
-                    self.db_writer.submit("alert", timestamp=ts, camera_id=self.camera_id,
-                                          alert_type="congestion", severity=status,
-                                          message=recommendation)
-                elif self.repo is not None:
-                    self.repo.add_alert(self.camera_id, "congestion", status, recommendation)
-                    self.repo.commit()
-                self._last_alert_ts = now_ts
+                self.alert_store.emit(
+                    "congestion", sev, recommendation, self.camera_id,
+                    store_id=self.settings.get("app", {}).get("store_id"),
+                    dedup_key="congestion")
+        else:
+            self.alert_store.resolve("congestion", "congestion")
+
+        if not deduped:
+            ts = _utcnow()
+            if self.db_writer is not None:
+                self.db_writer.submit("alert", timestamp=ts, camera_id=self.camera_id,
+                                      alert_type="congestion", severity=status,
+                                      message=recommendation)
+            elif self.repo is not None:
+                self.repo.add_alert(self.camera_id, "congestion", status, recommendation)
+                self.repo.commit()
+            self._last_alert_ts = now_ts
         self.alert_status = status
         logger.debug("queue=%s status=%s rec=%s", qtotal, status, recommendation)
 
@@ -553,6 +598,7 @@ class AnalyticsService:
             "entries": self.footfall.total_entries,
             "exits": self.footfall.total_exits,
             "occupancy": self.line_counter.occupancy() if self.line_counter else len(self._last_tracks),
+            "alerts": self.alert_store.snapshot(),
             "prediction_monitoring": self.pred_evaluator.metrics(),
         }
 

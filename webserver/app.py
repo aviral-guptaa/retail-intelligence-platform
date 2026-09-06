@@ -200,6 +200,24 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
         return {"live": True, "daily": svc.history.daily_summary(),
                 "peak_hours": svc.history.peak_hours()}
 
+    @app.get("/api/alerts/active")
+    def alerts_active() -> Dict[str, Any]:
+        p = manager.pipeline
+        if not p or not p.services:
+            return {"alerts": [], "counts": {"INFO": 0, "WARNING": 0, "HIGH": 0},
+                    "webhook_enabled": False}
+        snap = next(iter(p.services.values())).alert_store.snapshot()
+        return {"alerts": snap["active"], "counts": snap["by_severity"],
+                "webhook_enabled": snap["webhook_enabled"]}
+
+    @app.get("/api/alerts/historical")
+    def alerts_historical(limit: int = 100) -> Dict[str, Any]:
+        p = manager.pipeline
+        if not p or not p.services:
+            return {"alerts": []}
+        store = next(iter(p.services.values())).alert_store
+        return {"alerts": store.historical(limit=limit)}
+
     @app.get("/api/analytics/report.csv")
     def analytics_report_csv() -> Response:
         p = manager.pipeline

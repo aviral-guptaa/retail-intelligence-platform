@@ -6,6 +6,7 @@ app:
   version: "0.2.0"
   log_level: INFO
   heartbeat_interval_seconds: 1
+  store_id: "store_01"          # top-level store identity for alerts/POS scoping
 
 demo:                        # Demo mode configuration (no camera / ML required)
   enabled: true
@@ -89,6 +90,9 @@ alerts:
   congestion_high_queue: 8
   congestion_watch_queue: 3
   cooldown_seconds: 60        # min gap between emitted DB alerts (dedup window)
+  max_active: 50              # most recent N alerts kept active/in-memory per camera
+  webhook_url: ""             # optional generic endpoint; POSTed on new alerts (empty = disabled)
+  webhook_retry_seconds: 30   # background resend interval for failed deliveries
 
 database:
   snapshot_interval_seconds: 10    # throttle persisted aggregate snapshots

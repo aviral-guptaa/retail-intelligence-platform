@@ -173,6 +173,24 @@ def alerts(request: Request, limit: int = 50) -> Dict[str, Any]:
     return {"alerts": pipeline.repo.recent_alerts(limit)}
 
 
+@router.get("/alerts/active")
+def alerts_active(request: Request, camera_id: Optional[str] = None) -> Dict[str, Any]:
+    pipeline = _get_pipeline(request)
+    svc = pipeline.services[_first_camera(pipeline, camera_id)]
+    snap = svc.alert_store.snapshot()
+    return {"alerts": snap["active"], "counts": snap["by_severity"],
+            "webhook_enabled": snap["webhook_enabled"]}
+
+
+@router.get("/alerts/historical")
+def alerts_historical(request: Request, camera_id: Optional[str] = None,
+                      limit: int = 100, alert_type: Optional[str] = None) -> Dict[str, Any]:
+    pipeline = _get_pipeline(request)
+    svc = pipeline.services[_first_camera(pipeline, camera_id)]
+    return {"camera_id": svc.camera_id,
+            "alerts": svc.alert_store.historical(limit=limit, alert_type=alert_type)}
+
+
 @router.get("/config/zones")
 def get_zones(request: Request) -> Dict[str, Any]:
     from config.loader import load_zones

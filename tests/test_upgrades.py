@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from ml.analytics.history import AnalyticsHistory
+from app.services.alert_manager import AlertStore
 from app.schemas.models import Detection, Track
 from app.services.analytics_service import parse_zones
 from ml.queue.datalogger import QueueDataLogger
@@ -38,6 +39,30 @@ def _track(x, y, tid):
                  confidence=d.confidence, class_id=d.class_id,
                  class_name=d.class_name, ts=d.ts, hit_streak=1, missed_frames=0)
 
+
+# ---------------------------------------------------------------- alert store
+def test_alert_store_emit_resolve_and_dedup():
+    store = AlertStore({})
+    a = store.emit("congestion", "HIGH", "queue 12", "store_01",
+                   source="rule", dedup_key="congestion")
+    assert a is not None
+    # same dedup_key while active -> suppressed
+    assert store.emit("congestion", "HIGH", "queue 12", "store_01",
+                      dedup_key="congestion") is None
+    assert store.snapshot()["active_count"] == 1
+    store.resolve("congestion", "congestion")
+    assert store.snapshot()["active_count"] == 0
+    assert store.historical()[0]["active"] is False
+
+
+def test_alert_store_severity_filter_and_roll():
+    store = AlertStore({"max_active": 3})
+    for sev in ("INFO", "WARNING", "HIGH"):
+        store.emit("shelf", sev, f"msg-{sev}", "c1")
+    assert store.snapshot()["by_severity"]["HIGH"] == 1
+    assert len(store.active(min_severity="WARNING")) == 2
+    store.emit("shelf", "WARNING", "overflow", "c1")       # exceeds max_active -> roll
+    assert store.snapshot()["total_emitted"] == 3
 
 # ---------------------------------------------------------------- history store
 def test_history_buckets_aggregate_and_roll():
