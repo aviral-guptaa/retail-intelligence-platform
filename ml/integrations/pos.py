@@ -13,7 +13,31 @@ from __future__ import annotations
 
 import time
 from collections import deque
+from datetime import datetime, timezone
 from typing import Any, Deque, Dict, List, Optional
+
+
+def _to_epoch(value: Any) -> float:
+    """Accept either a numeric epoch (seconds) or an ISO-8601 timestamp."""
+    if value is None:
+        return time.time()
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    num = None
+    try:
+        num = float(text)
+    except ValueError:
+        pass
+    if num is not None:
+        return num
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except ValueError:
+        raise ValueError(f"unparseable timestamp: {text!r}") from None
 
 
 class IntegrationHub:
@@ -35,9 +59,11 @@ class IntegrationHub:
             tid = str(payload.get("transaction_id") or payload.get("id") or
                       f"txn-{self._received + 1}")
             amount = float(payload.get("amount") or payload.get("total") or 0.0)
-            items = int(payload.get("items") or payload.get("item_count") or 1)
+            raw_items = payload.get("items") or payload.get("item_count")
+            items = (len(raw_items) if isinstance(raw_items, list)
+                     else int(raw_items) if raw_items is not None else 1)
             method = str(payload.get("method") or payload.get("payment_method") or "unknown")
-            ts = float(payload.get("timestamp") or time.time())
+            ts = _to_epoch(payload.get("timestamp"))
         except (TypeError, ValueError):
             self._rejected += 1
             return {"ok": False, "error": "malformed payload"}
@@ -50,6 +76,26 @@ class IntegrationHub:
             "ts": ts,
         })
         return {"ok": True, "accepted": self._received, "rejected": self._rejected}
+
+    def ingest_batch(self, rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Ingest a validated list of transactions (pydantic already checked
+        types at the API boundary; this only handles in-memory shape drift).
+        Kept separate from :meth:`ingest_transaction` so the single-record path
+        (tests / direct hub use) stays intact and battle-tested."""
+        ok = bad = 0
+        for row in rows:
+            if isinstance(row, dict) and row.get("transaction_id"):
+                out = self.ingest_transaction(row)
+                ok += 1 if out.get("ok") else 0
+                bad += 0 if out.get("ok") else 1
+            else:
+                bad += 1
+        return {"ok": bad == 0, "accepted": ok, "rejected": bad,
+                "stored": len(self._txs)}
+
+    def ingest_inventory_batch(self, rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Ingest a validated list of inventory rows."""
+        return self.ingest_inventory({"inventory": rows})
 
     def pos_stats(self, hours: int = 1) -> Dict[str, Any]:
         cutoff = time.time() - hours * 3600

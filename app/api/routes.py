@@ -5,13 +5,36 @@ serialise to JSON. No ML logic lives here.
 """
 from __future__ import annotations
 
+import json
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
+from app.schemas.api import InventoryIngest, POSTransactionIngest
 from app.services.inference_service import InferencePipeline
+
+
+def _naive_ts(iso: str) -> datetime:
+    try:
+        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+    except Exception:
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _items_json(row: Dict[str, Any]) -> Optional[str]:
+    items = row.get("items")
+    if not items:
+        return None
+    try:
+        return json.dumps(items)[:2048]
+    except Exception:
+        return None
 
 
 def _get_pipeline(request: Request) -> InferencePipeline:
@@ -227,10 +250,77 @@ def alerts_historical(request: Request, camera_id: Optional[str] = None,
             "alerts": svc.alert_store.historical(limit=limit, alert_type=alert_type)}
 
 
+@router.get("/analytics/queues/events")
+def queue_events(request: Request, camera_id: Optional[str] = None,
+                 limit: int = 200) -> Dict[str, Any]:
+    """Persisted per-change queue events (empty when running without a DB writer)."""
+    pipeline = _get_pipeline(request)
+    sid = _first_camera(pipeline, camera_id)
+    return {"camera_id": sid,
+            "events": pipeline.repo.recent_queue_events(sid, limit=limit)}
+
+
+@router.get("/analytics/shelves/events")
+def shelf_events(request: Request, camera_id: Optional[str] = None,
+                 limit: int = 100) -> Dict[str, Any]:
+    """Persisted committed shelf-status transitions (empty without a DB writer)."""
+    pipeline = _get_pipeline(request)
+    sid = _first_camera(pipeline, camera_id)
+    return {"camera_id": sid,
+            "events": pipeline.repo.recent_shelf_events(sid, limit=limit)}
+
+
 @router.post("/integrations/pos/transactions")
-def pos_ingest(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Generic POS/webhook ingest point (vendor-agnostic, adapter only)."""
-    return _get_integrations(request).ingest_transaction(payload)
+def pos_ingest(request: Request, payload: POSTransactionIngest) -> Dict[str, Any]:
+    """Generic POS/webhook ingest point (vendor-agnostic, adapter only).
+
+    Validated by pydantic: transaction_id/timestamp required, amount must be
+    a non-negative number. Returns a 422 with field errors otherwise.
+    """
+    rows = [t.model_dump() for t in payload.transactions]
+    hub = _get_integrations(request)
+    result = hub.ingest_batch(rows)
+    persisted = _persist_pos_rows(request, rows)
+    result["persisted"] = persisted
+    return result
+
+
+@router.get("/integrations/pos/transactions")
+def pos_transactions(request: Request, limit: int = 100) -> Dict[str, Any]:
+    """POS transactions that were persisted to the DB (empty when running
+    without a database writer, e.g. the in-memory web dashboard)."""
+    pipeline = _get_pipeline(request)
+    return {"transactions": pipeline.repo.recent_pos_transactions(limit)}
+
+
+def _persist_pos_rows(request: Request, rows: List[Dict[str, Any]]) -> int:
+    """Best-effort persistence of ingested transactions (writer or repo).
+
+    Returns how many rows were actually written (0 in the in-memory dashboard,
+    which has no DB session - callers surface this honestly).
+    """
+    pipeline = _get_pipeline(request)
+    writer = getattr(pipeline, "db_writer", None)
+    n = len(rows)
+    if writer is not None:
+        for r in rows:
+            writer.submit("pos_transaction",
+                          transaction_id=r["transaction_id"],
+                          timestamp=_naive_ts(r["timestamp"]),
+                          store_id=r.get("store_id") or "store_01",
+                          amount=r.get("amount"),
+                          items_json=_items_json(r))
+        return n
+    repo = getattr(pipeline, "repo", None)
+    if repo is not None and getattr(repo, "session", None) is not None:
+        for r in rows:
+            repo.add_pos_transaction(
+                r["transaction_id"], _naive_ts(r["timestamp"]),
+                r.get("store_id") or "store_01", r.get("amount"),
+                _items_json(r))
+        repo.commit()
+        return n
+    return 0
 
 
 @router.get("/integrations/pos/conversion")
@@ -244,9 +334,13 @@ def pos_conversion(request: Request) -> Dict[str, Any]:
 
 
 @router.post("/integrations/erp/inventory")
-def erp_ingest(request: Request, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Generic ERP/webhook inventory snapshot ingest (adapter only)."""
-    return _get_integrations(request).ingest_inventory(payload)
+def erp_ingest(request: Request, payload: InventoryIngest) -> Dict[str, Any]:
+    """Generic ERP/webhook inventory snapshot ingest (adapter only).
+
+    Validated by pydantic: sku required, quantity must be a non-negative int.
+    """
+    rows = [r.model_dump() for r in payload.inventory]
+    return _get_integrations(request).ingest_inventory_batch(rows)
 
 
 @router.get("/integrations/erp/inventory")

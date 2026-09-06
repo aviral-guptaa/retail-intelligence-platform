@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 STATIC = Path(__file__).resolve().parent / "static"
 
 from app.api.routes import mjpeg_frames  # noqa: E402
+from app.schemas.api import InventoryIngest, POSTransactionIngest  # noqa: E402
 from app.services.inference_service import InferencePipeline  # noqa: E402
 from app.services.analytics_service import AnalyticsService   # noqa: E402
 from app.api.websocket import hub                             # noqa: E402
@@ -269,6 +270,22 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
         return {"live": True, "daily": svc.history.daily_summary(),
                 "peak_hours": svc.history.peak_hours()}
 
+    @app.get("/api/analytics/queues/events")
+    def queue_events(limit: int = 200) -> Dict[str, Any]:
+        """Persisted per-change queue events (empty in the in-memory dashboard)."""
+        p = manager.pipeline
+        repo = getattr(p, "repo", None)
+        return {"events": repo.recent_queue_events(limit=limit)
+                if repo is not None else []}
+
+    @app.get("/api/analytics/shelves/events")
+    def shelf_events(limit: int = 100) -> Dict[str, Any]:
+        """Persisted committed shelf transitions (empty in the in-memory dashboard)."""
+        p = manager.pipeline
+        repo = getattr(p, "repo", None)
+        return {"events": repo.recent_shelf_events(limit=limit)
+                if repo is not None else []}
+
     @app.get("/api/stores")
     def stores() -> Dict[str, Any]:
         p = manager.pipeline
@@ -293,8 +310,18 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
         return p.performance()
 
     @app.post("/api/integrations/pos/transactions")
-    def pos_ingest(payload: Dict[str, Any]) -> Dict[str, Any]:
-        return manager.integrations.ingest_transaction(payload)
+    def pos_ingest(payload: POSTransactionIngest) -> Dict[str, Any]:
+        rows = [t.model_dump() for t in payload.transactions]
+        result = manager.integrations.ingest_batch(rows)
+        result["persisted"] = 0      # in-memory dashboard: no DB writer
+        return result
+
+    @app.get("/api/integrations/pos/transactions")
+    def pos_transactions(limit: int = 100) -> Dict[str, Any]:
+        p = manager.pipeline
+        repo = getattr(p, "repo", None)
+        return {"transactions": repo.recent_pos_transactions(limit)
+                if repo is not None else []}
 
     @app.get("/api/integrations/pos/conversion")
     def pos_conversion() -> Dict[str, Any]:
@@ -306,8 +333,9 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
         return manager.integrations.conversion_rate(entries)
 
     @app.post("/api/integrations/erp/inventory")
-    def erp_ingest(payload: Dict[str, Any]) -> Dict[str, Any]:
-        return manager.integrations.ingest_inventory(payload)
+    def erp_ingest(payload: InventoryIngest) -> Dict[str, Any]:
+        rows = [r.model_dump() for r in payload.inventory]
+        return manager.integrations.ingest_inventory_batch(rows)
 
     @app.get("/api/integrations/erp/inventory")
     def erp_inventory() -> Dict[str, Any]:

@@ -135,6 +135,8 @@ class AnalyticsService:
         self.snapshot_interval = float(db_settings.get("snapshot_interval_seconds", 10))
         self.trajectory_sampling = int(db_settings.get("trajectory_sampling_frames", 30))
         self._last_db_snapshot = 0.0
+        self._last_queue_event_length = None
+        self._last_shelf_status: Dict[str, str] = {}
         self._frame_no = 0
 
         self.source = source
@@ -351,8 +353,43 @@ class AnalyticsService:
                                       zone_id=None, shelf_id=snap.shelf_id,
                                       shelf_status=snap.status,
                                       congestion_status=self.alert_status)
+            self._submit_queue_event(queues)
+            self._submit_shelf_events()
         except Exception as exc:
             logger.debug("db snapshot skipped: %s", exc)
+
+    def _submit_queue_event(self, queues: Dict[str, Any]) -> None:
+        """Persist a queue event when the total queue length changes (<= snapshot
+        cadence), so the events table stays cheap and the history dense enough
+        for off-line re-training."""
+        total = queues.get("total", 0)
+        if total == self._last_queue_event_length:
+            return
+        self._last_queue_event_length = total
+        wm = queues.get("wait_minutes")
+        wm_flat = wm if isinstance(wm, (int, float)) else None
+        meas = queues.get("measured_wait_minutes", {}).get("total")
+        self.db_writer.submit(
+            "queue_event", timestamp=_utcnow(), camera_id=self.camera_id,
+            queue_id=None, length=float(total),
+            wait_minutes=wm_flat,
+            measured_wait_avg_minutes=(meas.get("avg_wait_minutes")
+                                       if isinstance(meas, dict) else None))
+
+    def _submit_shelf_events(self) -> None:
+        """Persist a shelf event row on committed status transitions only."""
+        for snap in self.shelves.states.values():
+            if not getattr(snap, "confirmed", True):
+                continue
+            if self._last_shelf_status.get(snap.shelf_id) == snap.status:
+                continue
+            self._last_shelf_status[snap.shelf_id] = snap.status
+            self.db_writer.submit(
+                "shelf_event", timestamp=_utcnow(), camera_id=self.camera_id,
+                shelf_id=snap.shelf_id, status=snap.status,
+                item_count=int(getattr(snap, "item_count", 0) or 0),
+                confidence=getattr(snap, "confidence", None),
+                source=getattr(snap, "source", "heuristic"))
 
     def _maybe_export_heatmap(self, now: float) -> None:
         if self._heat_export_interval <= 0:

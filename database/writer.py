@@ -16,7 +16,9 @@ import threading
 import time
 from typing import Any, Callable, Dict, Optional
 
-from database.models import AlertRecord, AnalyticsSnapshot, TrajectorySample
+from database.models import (AlertRecord, AnalyticsSnapshot, CameraRecord,
+                             POSTransactionRecord, QueueEventRecord,
+                             ShelfEventRecord, StoreRecord, TrajectorySample)
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,10 @@ class BackgroundWriter:
     """Threaded ORM writer with bounded queue + batched commits."""
 
     _KINDS = {"snapshot": AnalyticsSnapshot, "alert": AlertRecord,
-              "position": TrajectorySample}
+              "position": TrajectorySample,
+              "store": StoreRecord, "camera": CameraRecord,
+              "queue_event": QueueEventRecord, "shelf_event": ShelfEventRecord,
+              "pos_transaction": POSTransactionRecord}
 
     def __init__(self, session_factory: Optional[Callable] = None,
                  flush_interval: float = 2.0, max_queue: int = 10000):
