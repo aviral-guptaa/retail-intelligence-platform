@@ -82,6 +82,81 @@ def test_stop_run(client):
     assert r.json()["status"] == "stopped"
 
 
+# ------------------------------------------------ run kinds + stored results
+def test_run_kind_and_stored_results():
+    """The dashboard can start a run with a kind and re-read the saved
+    analytics results afterwards (real numbers only, no fabrication)."""
+    c = _client()
+    r = c.post("/api/run/demo", data={"kind": "counter"})  # form -> kind
+    assert r.status_code == 200
+    assert r.json()["run"]["kind"] == "counter"
+    assert r.json()["run"]["mode"] == "demo"
+
+    for _ in range(50):
+        time.sleep(0.2)
+        if c.get("/api/run/status").json().get("live"):
+            break
+
+    live = c.get("/api/analytics/recommendation").json()
+    assert live["live"] is True
+    assert live["run_id"] is not None
+
+    time.sleep(2.5)
+    stop = c.post("/api/run/stop")
+    assert stop.status_code == 200
+
+    runs = c.get("/api/runs").json()["runs"]
+    assert runs, "a stopped run should be persisted"
+    rid = runs[0]["id"]
+    detail = c.get(f"/api/runs/{rid}").json()
+    assert detail["id"] == rid
+    assert detail["kind"] == "counter"
+    assert "summary" in detail and "history" in detail
+    assert "queues" in str(detail["current"])
+    hm = c.get(f"/api/runs/{rid}/heatmap.png")
+    assert hm.status_code == 200 and len(hm.content) > 0
+
+    # after stop, the live recommendation endpoint reports not-live
+    rec = c.get("/api/analytics/recommendation").json()
+    assert rec["live"] is False and rec["recommendation"] is None
+
+    # unknown run id -> 404
+    assert c.get("/api/runs/doesnotexist").status_code == 404
+    assert c.get("/api/runs/doesnotexist/heatmap.png").status_code == 404
+
+
+def test_recommendation_backend_logic():
+    """recommendation_from() only fires on real analytics signals."""
+    from webserver.run_store import recommendation_from
+    assert recommendation_from(None) is None
+
+    quiet = {
+        "queues": {"total": 1, "predictions": {}, "wait_minutes": {"q0": 1.0}},
+        "congestion_status": "NORMAL",
+        "shelves": [{"shelf_id": "a", "status": "FULL"}],
+        "alerts": {"active": []},
+    }
+    assert recommendation_from(quiet) is None
+
+    busy = {
+        "queues": {"total": 9, "predictions": {"10min": 11},
+                   "wait_minutes": {"q0": 6.0}},
+        "congestion_status": "HIGH",
+        "shelves": [],
+        "alerts": {"active": []},
+    }
+    rec = recommendation_from(busy)
+    assert rec and rec["action"] == "open_counter" and rec["source"] == "queue"
+
+    oos = {
+        "queues": {"total": 0, "predictions": {}},
+        "congestion_status": "NORMAL",
+        "shelves": [{"shelf_id": "s2", "status": "OUT_OF_STOCK"}],
+        "alerts": {"active": []},
+    }
+    assert recommendation_from(oos)["action"] == "restock"
+
+
 # ---------------------------------------------------------------- privacy
 def test_privacy_status_and_purge(client):
     r = client.get("/api/privacy/status")

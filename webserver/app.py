@@ -18,7 +18,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -28,6 +28,10 @@ STATIC = Path(__file__).resolve().parent / "static"
 
 from app.api.routes import mjpeg_frames  # noqa: E402
 from app.schemas.api import InventoryIngest, POSTransactionIngest  # noqa: E402
+from webserver.run_store import (  # noqa: E402
+    RUN_KINDS, kind_label, list_runs, load_run, media_path,
+    recommendation_from, save_run, summary_from,
+)
 from app.services.inference_service import InferencePipeline  # noqa: E402
 from app.services.analytics_service import AnalyticsService   # noqa: E402
 from app.api.websocket import hub                             # noqa: E402
@@ -46,10 +50,11 @@ class RunManager:
         self.settings = settings
         self.pipeline: Optional[InferencePipeline] = None
         self.run_meta: Dict[str, Any] = {
-            "id": None, "mode": None, "source": None, "started_ts": None,
-            "finished": False, "error": None,
+            "id": None, "mode": None, "source": None, "kind": None,
+            "started_ts": None, "finished": False, "error": None,
         }
         self._lock = threading.Lock()
+        self._results_written: set = set()
         self.integrations = __import__("ml.integrations.pos", fromlist=["IntegrationHub"]).IntegrationHub()
         self._deleted_uploads = 0
 
@@ -98,19 +103,88 @@ class RunManager:
         repo = Repository(None)
         return InferencePipeline(self.settings, repo, db_writer=None, display=False)
 
+    def _first_service(self, pipeline: InferencePipeline) -> Optional[AnalyticsService]:
+        if pipeline and pipeline.services:
+            return next(iter(pipeline.services.values()))
+        return None
+
+    def persist_results(self, svc: Optional[AnalyticsService]) -> bool:
+        """Persist this run's real results (snapshot + history + heatmap/frame)
+        so dashboard detail pages keep working after the run has stopped."""
+        run_id = self.run_meta.get("id")
+        if run_id is None or svc is None or run_id in self._results_written:
+            return False
+        try:
+            cur = svc.current()
+            hist = svc.historical()
+            rec = recommendation_from(cur)
+            frames = 0
+            try:
+                frames = int(svc.monitor.snapshot().get("frames_processed", 0) or 0)
+            except Exception:
+                pass
+            heatmap_png = None
+            try:
+                img = svc.heatmap_image()
+                if img is not None:
+                    import cv2
+                    ok, buf = cv2.imencode(".png", img)
+                    heatmap_png = buf.tobytes() if ok else None
+            except Exception:
+                heatmap_png = None
+            frame_jpg = svc.frame_jpeg_bytes(960)
+            data = {
+                "id": run_id,
+                "kind": self.run_meta.get("kind"),
+                "kind_label": kind_label(self.run_meta.get("kind")),
+                "mode": self.run_meta.get("mode"),
+                "source": self.run_meta.get("source"),
+                "started_ts": self.run_meta.get("started_ts"),
+                "ended_ts": time.time(),
+                "finished": bool(self.run_meta.get("finished", False)),
+                "frames": frames,
+                "summary": summary_from(cur),
+                "history": hist,
+                "recommendation": rec,
+                "current": {
+                    "footfall": cur.get("footfall"),
+                    "reid": cur.get("reid"),
+                    "dwell": cur.get("dwell"),
+                    "queues": cur.get("queues"),
+                    "shelves": cur.get("shelves"),
+                    "planogram": cur.get("planogram"),
+                    "congestion_status": cur.get("congestion_status"),
+                    "alerts": cur.get("alerts"),
+                },
+            }
+            ok = save_run(run_id, data, heatmap_png=heatmap_png, frame_jpg=frame_jpg)
+            if ok:
+                self._results_written.add(run_id)
+                logger.info("persisted run results %s (kind=%s)", run_id,
+                            data["kind_label"])
+            return ok
+        except Exception as exc:
+            logger.warning("could not persist run results %s: %s", run_id, exc)
+            return False
+
     def stop_current(self) -> None:
         with self._lock:
-            if self.pipeline is not None:
+            p = self.pipeline
+            if p is not None:
+                svc = self._first_service(p)
                 try:
-                    self.pipeline.stop()
+                    p.stop()
                 except Exception as exc:
                     logger.warning("stop current run: %s", exc)
+                if svc is not None:
+                    self.persist_results(svc)
                 self.pipeline = None
             if not self._retain():
                 self._discard_current_upload()
 
     def start(self, mode: str, source: Optional[str] = None,
-              camera_id: str = "store_01") -> Dict[str, Any]:
+              camera_id: str = "store_01", kind: str = "entry_exit") -> Dict[str, Any]:
+        kind = kind if kind in RUN_KINDS else "entry_exit"
         self.stop_current()
         run_id = uuid.uuid4().hex[:12]
 
@@ -126,6 +200,7 @@ class RunManager:
                 finished = svc is not None and getattr(svc.source, "finished", False)
                 if finished:
                     self.run_meta["finished"] = True
+                    self.persist_results(svc)
                     if not self._retain():
                         self._discard_current_upload()
                     return
@@ -138,6 +213,7 @@ class RunManager:
                     self.pipeline = pipeline
                 pipeline.add_camera(camera_id, mode="demo")
                 self.run_meta = {"id": run_id, "mode": "demo", "source": "simulator",
+                                 "kind": kind,
                                  "started_ts": time.time(), "finished": False, "error": None}
                 threading.Thread(target=pipeline.start, daemon=True).start()
                 threading.Thread(target=_on_done, daemon=True).start()
@@ -148,6 +224,7 @@ class RunManager:
                     self.pipeline = pipeline
                 pipeline.add_camera(camera_id, mode="video", source=source)
                 self.run_meta = {"id": run_id, "mode": "video", "source": source,
+                                 "kind": kind,
                                  "started_ts": time.time(), "finished": False, "error": None}
                 threading.Thread(target=pipeline.start, daemon=True).start()
                 threading.Thread(target=_on_done, daemon=True).start()
@@ -181,12 +258,13 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
 
     # -------------------------------------------------------------- run control
     @app.post("/api/run/demo")
-    def run_demo() -> Dict[str, Any]:
-        meta = manager.start("demo")
+    def run_demo(kind: str = Form("entry_exit")) -> Dict[str, Any]:
+        meta = manager.start("demo", kind=kind)
         return {"status": "started", "run": meta}
 
     @app.post("/api/run/video")
-    async def run_video(file: UploadFile = File(...)) -> Dict[str, Any]:
+    async def run_video(file: UploadFile = File(...),
+                        kind: str = Form("entry_exit")) -> Dict[str, Any]:
         # sanity: accept common video containers
         name = (file.filename or "upload").lower()
         if not name.endswith((".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v")):
@@ -202,7 +280,7 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
                 shutil.copyfileobj(file.file, buffer, length=1 << 20)
         finally:
             await file.close()
-        meta = manager.start("video", source=str(dest))
+        meta = manager.start("video", source=str(dest), kind=kind)
         return {"status": "started", "run": meta}
 
     @app.post("/api/run/stop")
@@ -244,6 +322,47 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
             "uptime_s": round(time.time() - manager.run_meta["started_ts"], 1)
                         if manager.run_meta["started_ts"] else 0,
         }
+
+    # ---------------------------------------------------- persisted runs (history)
+    @app.get("/api/runs")
+    def runs(limit: int = 20) -> Dict[str, Any]:
+        return {"runs": list_runs(limit=limit)}
+
+    @app.get("/api/runs/{run_id}")
+    def runs_detail(run_id: str) -> Dict[str, Any]:
+        data = load_run(run_id)
+        if data is None:
+            raise HTTPException(404, "no such run")
+        return data
+
+    @app.get("/api/runs/{run_id}/heatmap.png")
+    def runs_heatmap(run_id: str) -> FileResponse:
+        p = media_path(run_id, "png")
+        if p is None:
+            raise HTTPException(404, "no stored heatmap")
+        return FileResponse(str(p), media_type="image/png")
+
+    @app.get("/api/runs/{run_id}/frame.jpg")
+    def runs_frame(run_id: str) -> FileResponse:
+        p = media_path(run_id, "jpg")
+        if p is None:
+            raise HTTPException(404, "no stored frame")
+        return FileResponse(str(p), media_type="image/jpeg")
+
+    # --------------------------------------------- actionable recommendation (real)
+    @app.get("/api/analytics/recommendation")
+    def analytics_recommendation() -> Dict[str, Any]:
+        p = manager.pipeline
+        svc = manager._first_service(p) if p is not None else None
+        if svc is None:
+            return {"live": False, "recommendation": None, "run_id": None}
+        try:
+            rec = recommendation_from(svc.current())
+        except Exception as exc:
+            logger.warning("recommendation failed: %s", exc)
+            rec = None
+        return {"live": True, "recommendation": rec,
+                "run_id": manager.run_meta.get("id")}
 
     # ----------------------------------------------------------- analytics (live)
     @app.get("/api/analytics/current")

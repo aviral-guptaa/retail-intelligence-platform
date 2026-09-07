@@ -3,393 +3,708 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>SIH Retail Intelligence — Dashboard</title>
+<title>Retail Intelligence — SIH 2026 Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root{
-    --bg:#0b1020; --panel:#151b31; --panel2:#1c2540; --edge:#2a3560;
-    --txt:#e7ecff; --muted:#93a0c4; --accent:#4c8dff; --good:#34d399;
-    --warn:#fbbf24; --bad:#f87171;
+    --bg:#080d1c; --bg2:#0c1328; --panel:#111a33; --panel2:#182444;
+    --edge:#24345f; --edge2:#1a2749; --txt:#e8edff; --muted:#8fa0c8;
+    --accent:#4c8dff; --accent2:#7faeff; --good:#34d399; --warn:#fbbf24; --bad:#f87171;
+    --radius:16px; --shadow:0 10px 30px rgba(0,0,0,.35);
   }
   *{box-sizing:border-box; margin:0; padding:0}
   html,body{height:100%}
-  body{background:var(--bg); color:var(--txt); font-family:'Segoe UI',system-ui,sans-serif;
-       display:flex; flex-direction:column; padding:10px 14px; gap:10px; overflow:auto}
-  /* header */
-  header{display:flex; align-items:center; gap:14px; flex:none}
-  header .logo{font-size:17px; font-weight:700; letter-spacing:.4px}
-  header .logo span{color:var(--accent)}
-  .pill{font-size:11px; padding:3px 10px; border-radius:20px; border:1px solid var(--edge); background:var(--panel2); color:var(--muted)}
-  .pill.live{color:var(--good); border-color:#1b6b4f; background:#12251d}
+  body{background:
+      radial-gradient(1200px 500px at 80% -10%, rgba(76,141,255,.18), transparent 60%),
+      radial-gradient(900px 500px at 0% 110%, rgba(52,211,153,.10), transparent 55%),
+      var(--bg);
+    color:var(--txt); font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    min-height:100vh; padding-bottom:40px}
+  button{font-family:inherit}
+  /* ---------------------------------------------------------------- header */
+  header{position:sticky; top:0; z-index:30; display:flex; align-items:center; gap:12px;
+    padding:10px 18px; background:rgba(8,13,28,.82); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--edge2)}
+  header .logo{font-size:16px; font-weight:800; letter-spacing:.4px}
+  header .logo span{color:var(--accent2)}
+  header .actions{margin-left:auto; display:flex; align-items:center; gap:8px}
+  .pill{font-size:11px; padding:4px 11px; border-radius:20px; border:1px solid var(--edge);
+    background:var(--panel2); color:var(--muted); white-space:nowrap}
+  .pill.live{color:var(--good); border-color:#1b6b4f; background:#0f2419}
   .pill.off{color:var(--muted)}
-  #modePill{margin-left:auto}
-  /* top control bar */
-  .controls{display:flex; align-items:center; gap:10px; flex:none; flex-wrap:nowrap}
-  .upload-zone{border:2px dashed var(--edge); border-radius:10px; padding:8px 16px; text-align:center;
-               color:var(--muted); cursor:pointer; transition:.2s; font-size:13px; flex:none}
-  .upload-zone:hover,.upload-zone.drag{border-color:var(--accent); color:var(--txt); background:#101a33}
-  .upload-zone input{display:none}
-  .btn{border:none; border-radius:8px; padding:9px 16px; font-size:13px; font-weight:600; cursor:pointer; transition:.15s; flex:none}
-  .btn.demo{background:var(--accent); color:#fff}
-  .btn.demo:hover{background:#3d7ae0}
-  .btn.stop{background:#3a1220; color:var(--bad); border:1px solid #7f1d2b}
+  .btn{border:none; border-radius:10px; padding:9px 15px; font-size:13px; font-weight:700;
+    cursor:pointer; transition:.15s}
+  .btn.demo{background:linear-gradient(135deg,var(--accent),#3d7ae0); color:#fff}
+  .btn.demo:hover{filter:brightness(1.1)}
+  .btn.stop{background:#2a1220; color:var(--bad); border:1px solid #7f1d2b}
   .btn:disabled{opacity:.5; cursor:not-allowed}
-  .status-line{font-size:12px; color:var(--muted); flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  /* ------------------------------------------------------------- container */
+  main{max-width:1280px; margin:0 auto; padding:18px; display:flex; flex-direction:column; gap:16px}
+  .status-line{font-size:12px; color:var(--muted)}
   .status-line.err{color:var(--bad)}
-  /* metrics row */
-  .metrics{display:grid; grid-template-columns:repeat(6,1fr); gap:10px; flex:none}
-  .metric{background:var(--panel); border:1px solid var(--edge); border-radius:12px; padding:10px 14px}
-  .metric .label{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px}
-  .metric .value{font-size:26px; font-weight:700; line-height:1.05; margin-top:2px}
-  .metric .sub{font-size:11px; color:var(--muted); margin-top:2px; white-space:nowrap}
-  .metric .value.good{color:var(--good)} .metric .value.warn{color:var(--warn)} .metric .value.bad{color:var(--bad)}
-  /* recommendation banner */
-  .recommend{display:flex; align-items:center; gap:14px; background:var(--panel); border:1px solid var(--edge);
-             border-radius:12px; padding:8px 14px; flex:none}
-  .recommend .tag{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; flex:none}
-  .recommend .msg{font-size:15px; font-weight:600; flex:1}
-  .recommend .msg.action{color:var(--warn)}
-  .recommend .msg.none{color:var(--good)}
-  .factors{display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; flex:none}
-  .factor{font-size:11px; background:var(--panel2); padding:3px 8px; border-radius:8px; color:var(--muted)}
-  /* grid: 4 panels per row */
-  .panels{display:grid; grid-template-columns:1.3fr 1.3fr 1fr 1fr; gap:10px; flex:1; min-height:0}
-  .panels.row2{grid-template-columns:1fr 1.3fr 1.3fr 1fr}
-  .card{background:var(--panel); border:1px solid var(--edge); border-radius:12px; padding:10px; display:flex; flex-direction:column; min-width:0; min-height:230px}
-  .card h3{color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; flex:none}
-  .chart-hold{flex:1; min-height:0; position:relative}
-  #shelves,#alertList{flex:1; overflow:auto; font-size:12px}
-  table{width:100%; border-collapse:collapse}
-  th{text-align:left; color:var(--muted); font-weight:600; padding:3px 6px; border-bottom:1px solid var(--edge)}
-  td{padding:4px 6px; border-bottom:1px solid #1b2340}
-  .badge{display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:600}
-  .badge.FULL{background:#12251d; color:var(--good)}
-  .badge.LOW_STOCK,.badge.LOW{background:#33280f; color:var(--warn)}
-  .badge.OUT_OF_STOCK,.badge.OUT{background:#3a1220; color:var(--bad)}
-  .badge.OK,.badge.ok{background:#12251d; color:var(--good)}
-  .badge.dim{background:var(--panel2); color:var(--muted)}
-  .badge.model{background:#0f2f1d; color:var(--good); border:1px solid #1b6b4f}
-  .badge.blend{background:#0f2950; color:#7fb2ff; border:1px solid #2a5fa0}
-  .badge.fallback{background:#33280f; color:var(--warn); border:1px solid #7a5d1a}
+  /* ---------------------------------------------------------- recommendation */
+  .rec-bar{display:flex; align-items:center; gap:14px; padding:14px 18px; border-radius:var(--radius);
+    background:linear-gradient(90deg,#142a5e,#111a33 60%); border:1px solid var(--edge);
+    box-shadow:var(--shadow)}
+  .rec-bar .tag{font-size:10px; font-weight:800; letter-spacing:1.5px; color:var(--accent2);
+    text-transform:uppercase; flex:none; line-height:1.3}
+  .rec-bar .msg{font-size:15px; font-weight:600; flex:1; line-height:1.4}
+  .rec-bar .msg.warn{color:var(--warn)} .rec-bar .msg.ok{color:var(--good)}
+  .rec-bar .src{margin-left:auto; flex:none; text-align:right}
+  .badge{display:inline-block; padding:3px 9px; border-radius:20px; font-size:10px; font-weight:700}
+  .badge.FULL{background:#0f2419; color:var(--good)}
+  .badge.LOW,.badge.LOW_STOCK{background:#2c2110; color:var(--warn)}
+  .badge.OUT,.badge.OUT_OF_STOCK{background:#2a1220; color:var(--bad)}
+  .badge.OK{background:#0f2419; color:var(--good)}
+  .badge.NORMAL{background:#0f2419; color:var(--good)}
   .badge.INFO{background:var(--panel2); color:var(--muted)}
-  .badge.WARNING,.badge.warn{background:#33280f; color:var(--warn)}
-  .badge.HIGH{background:#3a1220; color:var(--bad)}
-  .badge.ONLINE,.badge.NORMAL{background:#12251d; color:var(--good)}
-  .badge.OFFLINE,.badge.ERROR{background:#3a1220; color:var(--bad)}
-  .badge.RECONNECTING{background:#33280f; color:var(--warn)}
-  .empty{color:var(--muted); font-size:12px; text-align:center; padding:16px}
-  #heatmap{width:100%; height:100%; object-fit:contain; border-radius:8px; border:1px solid var(--edge); background:#000; visibility:hidden}
-  .monitor{font-size:11px; margin-top:6px}
-  .monitor div{display:flex; justify-content:space-between; padding:2px 0}
-  /* compact uploaded-video preview pinned below the heatmap inside its column */
-  #videoWrap{display:none; margin-top:8px; flex:none}
-  #videoWrap.on{display:block}
-  #videoWrap .vlab{color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px}
-  #vid{width:100%; aspect-ratio:16/9; background:#000; border-radius:8px; border:1px solid var(--edge)}
-  .alert-item{display:flex; gap:8px; align-items:baseline; padding:4px 2px; border-bottom:1px solid #1b2340; font-size:11px}
-  footer{color:var(--muted); font-size:10px; text-align:center; flex:none}
+  .badge.WARNING{background:#2c2110; color:var(--warn)}
+  .badge.HIGH{background:#2a1220; color:var(--bad)}
+  .badge.ONLINE{background:#0f2419; color:var(--good)}
+  .badge.OFFLINE,.badge.ERROR{background:#2a1220; color:var(--bad)}
+  .badge.RECONNECTING{background:#2c2110; color:var(--warn)}
+  .badge.model{background:#0f2419; color:var(--good); border:1px solid #1b6b4f}
+  .badge.blend{background:#0f2242; color:#7fb2ff; border:1px solid #2a5fa0}
+  .badge.fallback{background:#2c2110; color:var(--warn); border:1px solid #7a5d1a}
+  .badge.MODEL_NOT_AVAILABLE{background:#2c2110; color:var(--warn)}
+  .badge.dim{background:var(--panel2); color:var(--muted)}
+  /* ----------------------------------------------------------------- cards */
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(255px,1fr)); gap:16px}
+  .metric{position:relative; display:flex; flex-direction:column; gap:8px;
+    background:linear-gradient(180deg,var(--panel),var(--bg2)); border:1px solid var(--edge);
+    border-radius:var(--radius); padding:18px 18px 14px; box-shadow:var(--shadow);
+    cursor:pointer; transition:.18s; overflow:hidden}
+  .metric:hover{transform:translateY(-3px); border-color:#3a5590; box-shadow:0 16px 40px rgba(0,0,0,.5)}
+  .metric::before{content:""; position:absolute; inset:0 0 auto 0; height:3px;
+    background:linear-gradient(90deg,var(--accent),#34d399); opacity:.5}
+  .metric .top{display:flex; align-items:center; justify-content:space-between; font-size:11px;
+    font-weight:700; letter-spacing:1.2px; color:var(--muted); text-transform:uppercase}
+  .metric .top .ico{font-size:16px}
+  .metric .value{font-size:34px; font-weight:800; line-height:1; letter-spacing:-.5px}
+  .metric .value.good{color:var(--good)} .metric .value.warn{color:var(--warn)} .metric .value.bad{color:var(--bad)}
+  .metric .sub{font-size:12px; color:var(--muted)}
+  .metric .foot{display:flex; align-items:center; gap:8px; margin-top:auto; padding-top:8px;
+    border-top:1px solid var(--edge2)}
+  .metric .foot .go{margin-left:auto; font-size:11px; color:var(--accent2); font-weight:700}
+  .upload-btn{font-size:11px; font-weight:700; border:1px dashed #3a5590; color:#bcd0ff;
+    background:#0c1730; border-radius:9px; padding:6px 10px; cursor:pointer; transition:.15s}
+  .upload-btn:hover{border-color:var(--accent); color:var(--accent2); background:#10203f}
+  /* ------------------------------------------------------------- detail views */
+  .view-head{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+  .view-head h2{font-size:20px; font-weight:800}
+  .view-head .back{font-family:inherit; padding:8px 14px; border-radius:10px; background:var(--panel2);
+    border:1px solid var(--edge); color:var(--txt); cursor:pointer; font-size:13px; font-weight:600}
+  .view-head .runpick{margin-left:auto; display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted)}
+  .view-head select{background:var(--panel2); color:var(--txt); border:1px solid var(--edge);
+    border-radius:9px; padding:7px 9px; font-size:12px}
+  .grid2{display:grid; grid-template-columns:1.6fr 1fr; gap:16px}
+  .grid2b{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  @media (max-width:980px){.grid2,.grid2b{grid-template-columns:1fr}}
+  .card{background:var(--panel); border:1px solid var(--edge); border-radius:var(--radius);
+    padding:14px; box-shadow:var(--shadow)}
+  .card h3{color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase;
+    letter-spacing:1.2px; margin-bottom:8px}
+  .chart-hold{height:250px; position:relative}
+  .chart-hold.sm{height:180px}
+  table{width:100%; border-collapse:collapse; font-size:12px}
+  th{text-align:left; color:var(--muted); font-weight:700; padding:6px 8px; border-bottom:1px solid var(--edge)}
+  td{padding:6px 8px; border-bottom:1px solid var(--edge2)}
+  .imgbox img{width:100%; border-radius:10px; border:1px solid var(--edge); background:#000;
+    aspect-ratio:16/9; object-fit:contain}
+  .empty{color:var(--muted); font-size:12px; text-align:center; padding:20px}
+  .stat-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px}
+  .stat{background:var(--bg2); border:1px solid var(--edge2); border-radius:12px; padding:10px 12px}
+  .stat .k{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px}
+  .stat .v{font-size:20px; font-weight:800; margin-top:2px}
+  .stat .v.good{color:var(--good)} .stat .v.warn{color:var(--warn)}
+  .alert-item{display:flex; gap:8px; align-items:baseline; padding:7px 2px;
+    border-bottom:1px solid var(--edge2); font-size:12px}
+  .factors{display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end}
+  .factor{font-size:11px; background:var(--panel2); padding:3px 9px; border-radius:8px; color:var(--muted)}
+  .privacy{color:var(--muted); font-size:11px; text-align:center; margin:14px 0 6px}
+  #dropHint{position:fixed; inset:0; z-index:60; display:none; align-items:center; justify-content:center;
+    background:rgba(8,13,28,.85); backdrop-filter:blur(4px); font-size:18px; font-weight:700;
+    border:3px dashed var(--accent); color:var(--accent2); pointer-events:none}
+  #dropHint.on{display:flex}
 </style>
 </head>
 <body>
 <header>
   <div class="logo">Retail<span>Intelligence</span> · SIH 2026</div>
-  <div class="pill off" id="connPill">◦ connecting…</div>
-  <div class="pill" id="modePill">standby</div>
+  <div class="actions">
+    <div class="pill off" id="connPill">◦ connecting…</div>
+    <div class="pill" id="modePill">standby</div>
+    <button class="btn stop" id="stopBtn">Stop</button>
+    <button class="btn demo" id="demoBtn">Run demo</button>
+  </div>
 </header>
 
-<div class="controls">
-  <div class="upload-zone" id="dropZone">
-    <input type="file" id="fileInput" accept="video/*,.mp4,.mov,.avi,.mkv,.webm,.m4v" />
-    <strong>Upload video</strong>
-  </div>
-  <button class="btn demo" id="demoBtn">▶ Run demo</button>
-  <button class="btn stop" id="stopBtn">■ Stop</button>
-  <div class="status-line" id="statusLine">Ready — choose an action.</div>
-</div>
+<main>
+  <!-- ============================================================ dashboard -->
+  <section data-view="dashboard">
+    <div class="status-line" id="statusLine">Ready — run the demo or upload a video (entry/exit, checkout counter, or shelf).</div>
 
-<div class="metrics">
-  <div class="metric"><div class="label">Occupancy</div><div class="value" id="mOccupancy">—</div><div class="sub" id="mFootfall">in/out</div></div>
-  <div class="metric"><div class="label">Unique shoppers</div><div class="value" id="mUnique">—</div><div class="sub">Re-ID, no faces</div></div>
-  <div class="metric"><div class="label">Queue now</div><div class="value warn" id="mQueue">—</div><div class="sub" id="mWait">wait ≈ —</div></div>
-  <div class="metric"><div class="label">Queue · 5 min</div><div class="value" id="mPred5">—</div><div class="sub">forecast</div></div>
-  <div class="metric"><div class="label">Queue · 10 min</div><div class="value" id="mPred10">—</div><div class="sub" id="pm10"></div></div>
-  <div class="metric"><div class="label">Confidence</div><div class="value" id="mConf">—</div><div class="sub" id="mInterval">80% interval</div></div>
-  <div class="metric"><div class="label">Status</div><div class="value" id="mStatus">—</div><div class="sub" id="predSource">source</div></div>
-</div>
-
-<div class="recommend">
-  <div class="tag">Recommendation</div>
-  <div class="msg none" id="recMsg">No live run yet.</div>
-  <div class="factors" id="recFactors"></div>
-</div>
-
-<div class="panels">
-  <div class="card"><h3>Queue length — history</h3><div class="chart-hold"><canvas id="queueChart"></canvas></div></div>
-  <div class="card"><h3>Footfall / occupancy</h3><div class="chart-hold"><canvas id="footChart"></canvas></div></div>
-  <div class="card">
-    <h3>Shelves</h3>
-    <div id="shelves"><div class="empty">No shelf data yet.</div></div>
-    <div class="monitor" id="monitor"></div>
-  </div>
-  <div class="card" style="display:flex;flex-direction:column">
-    <h3>Movement heatmap</h3>
-    <div class="chart-hold" style="flex:1"><img id="heatmap" alt="heatmap" onerror="this.style.visibility='hidden'" /></div>
-    <div id="videoWrap">
-      <div class="vlab">Uploaded video (live)</div>
-      <img id="vid" alt="live frame" />
+    <div class="rec-bar" id="recBar" style="margin-top:12px">
+      <div class="tag">AI<br/>Recommendation</div>
+      <div class="msg ok" id="recMsg">No recommendations available yet.</div>
+      <div class="src" id="recSrc"></div>
     </div>
-  </div>
-</div>
 
-<div class="panels row2">
-  <div class="card">
-    <h3>Active alerts</h3>
-    <div id="alertList"><div class="empty">No active alerts.</div></div>
-    <div class="monitor" id="alertCounts"></div>
-  </div>
-  <div class="card"><h3>Footfall / queue — hourly history</h3><div class="chart-hold"><canvas id="hourChart"></canvas></div></div>
-  <div class="card">
-    <h3>Daily summary</h3>
-    <div id="dailyTable" class="chart-hold" style="overflow:auto"></div>
-  </div>
-  <div class="card">
-    <h3>Camera health</h3>
-    <div id="cameraHealth" class="chart-hold" style="overflow:auto"></div>
-  </div>
-</div>
+    <div class="cards" style="margin-top:16px">
+      <div class="metric" data-click="occupancy">
+        <div class="top"><span>Occupancy</span><span class="ico">👥</span></div>
+        <div class="value" id="mOccupancy">—</div>
+        <div class="sub" id="mFootfall">entries / exits</div>
+        <div class="foot">
+          <button class="upload-btn" data-kind="entry_exit">Upload Entry/Exit video</button>
+          <span class="go">Analytics →</span>
+        </div>
+      </div>
 
-<footer>Privacy-first retail analytics — anonymous track ids only, no facial recognition.</footer>
+      <div class="metric" data-click="shoppers">
+        <div class="top"><span>Unique Shoppers</span><span class="ico">🛍️</span></div>
+        <div class="value" id="mUnique">—</div>
+        <div class="sub">anonymous count · no faces</div>
+        <div class="foot">
+          <button class="upload-btn" data-kind="entry_exit">Upload Entry/Exit video</button>
+          <span class="go">Shopper analytics →</span>
+        </div>
+      </div>
+
+      <div class="metric" data-click="queue">
+        <div class="top"><span>Queue Now</span><span class="ico">🧾</span></div>
+        <div class="value" id="mQueue">—</div>
+        <div class="sub" id="mWait">wait estimate</div>
+        <div class="foot">
+          <button class="upload-btn" data-kind="counter">Upload Counter video</button>
+          <span class="go">Queue analytics →</span>
+        </div>
+      </div>
+
+      <div class="metric" data-click="dwell">
+        <div class="top"><span>Dwell Time</span><span class="ico">⏱️</span></div>
+        <div class="value" id="mDwell">—</div>
+        <div class="sub" id="mDwellSub">avg time in-store</div>
+        <div class="foot">
+          <button class="upload-btn" data-kind="entry_exit">Upload Entry/Exit video</button>
+          <span class="go">Zone charts →</span>
+        </div>
+      </div>
+
+      <div class="metric" data-click="shelf">
+        <div class="top"><span>Shelf Status</span><span class="ico">📦</span></div>
+        <div class="value" id="mShelf">—</div>
+        <div class="sub" id="mShelfSub">shelves monitored</div>
+        <div class="foot">
+          <button class="upload-btn" data-kind="shelf">Upload Shelf video</button>
+          <span class="go">Shelf analytics →</span>
+        </div>
+      </div>
+
+      <div class="metric" data-click="ai">
+        <div class="top"><span>AI Suggestions</span><span class="ico">💡</span></div>
+        <div class="value" id="mAi">—</div>
+        <div class="sub" id="mAiSub">info · warning · high</div>
+        <div class="foot">
+          <span class="go" style="margin-left:0">Open suggestions →</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================== occupancy -->
+  <section data-view="occupancy" hidden>
+    <div class="view-head">
+      <button class="back" data-back>← Dashboard</button>
+      <h2>Occupancy analytics</h2>
+      <div class="runpick">Run <select data-kpick="entry_exit"></select></div>
+      <button class="upload-btn" data-kind="entry_exit">Upload Entry/Exit video</button>
+    </div>
+    <div class="stat-grid" style="margin-top:14px">
+      <div class="stat"><div class="k">Current occupancy</div><div class="v" id="sOcc">—</div></div>
+      <div class="stat"><div class="k">Total entries</div><div class="v" id="sIn">—</div></div>
+      <div class="stat"><div class="k">Total exits</div><div class="v" id="sOut">—</div></div>
+      <div class="stat"><div class="k">Peak occupancy</div><div class="v" id="sPeakOcc">—</div></div>
+    </div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="card"><h3>Footfall &amp; occupancy</h3><div class="chart-hold"><canvas id="occChart"></canvas></div></div>
+      <div class="card"><h3>Hourly footfall</h3><div class="chart-hold"><canvas id="occHourChart"></canvas></div></div>
+    </div>
+    <div class="grid2b" style="margin-top:16px">
+      <div class="card"><h3>Movement heatmap</h3><div class="imgbox"><img id="occHeat" alt="movement heatmap" /></div></div>
+      <div class="card"><h3>Analytics frame</h3><div class="imgbox" id="occFrame"><img id="occVid" alt="analytics frame" /></div></div>
+    </div>
+  </section>
+
+  <!-- ======================================================== shoppers -->
+  <section data-view="shoppers" hidden>
+    <div class="view-head">
+      <button class="back" data-back>← Dashboard</button>
+      <h2>Shopper analytics (anonymous Re-ID)</h2>
+      <button class="upload-btn" data-kind="entry_exit">Upload Entry/Exit video</button>
+    </div>
+    <div class="stat-grid" style="margin-top:14px">
+      <div class="stat"><div class="k">Unique shopper count</div><div class="v" id="sUnique">—</div></div>
+      <div class="stat"><div class="k">Active identities</div><div class="v" id="sActive">—</div></div>
+      <div class="stat"><div class="k">Re-ID engine</div><div class="v" id="sReid">—</div></div>
+      <div class="stat"><div class="k">Privacy</div><div class="v good">AUDITED</div></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>Unique shoppers in rolling window</h3>
+      <div class="chart-hold"><canvas id="uniqueChart"></canvas></div></div>
+    <p class="privacy">No face detection or biometrics — appearance embeddings are colour-hash histograms of the body crop only.</p>
+  </section>
+
+  <!-- ======================================================== queue -->
+  <section data-view="queue" hidden>
+    <div class="view-head">
+      <button class="back" data-back>← Dashboard</button>
+      <h2>Queue analytics</h2>
+      <div class="runpick">Run <select data-kpick="counter"></select></div>
+      <button class="upload-btn" data-kind="counter">Upload Counter video</button>
+    </div>
+    <div class="stat-grid" style="margin-top:14px">
+      <div class="stat"><div class="k">Queue now</div><div class="v" id="sQueue">—</div></div>
+      <div class="stat"><div class="k">Est. wait</div><div class="v" id="sWait">—</div></div>
+      <div class="stat"><div class="k">Measured avg wait</div><div class="v" id="sMeasWait">—</div></div>
+      <div class="stat"><div class="k">Predicted 10 min</div><div class="v" id="sPred10" style="display:flex;align-items:baseline;gap:8px">— </div></div>
+    </div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="card"><h3>Queue length — history</h3><div class="chart-hold"><canvas id="queueChart"></canvas></div></div>
+      <div class="card"><h3>Per-checkout</h3><div class="chart-hold sm" style="overflow:auto" id="queueTable"></div></div>
+    </div>
+    <div class="grid2b" style="margin-top:16px">
+      <div class="card"><h3>5 &amp; 10 min forecast</h3><div class="chart-hold"><canvas id="predChart"></canvas></div></div>
+      <div class="card"><h3>Est vs measured wait (min)</h3><div class="chart-hold"><canvas id="waitChart"></canvas></div></div>
+    </div>
+  </section>
+
+  <!-- ======================================================== dwell -->
+  <section data-view="dwell" hidden>
+    <div class="view-head">
+      <button class="back" data-back>← Dashboard</button>
+      <h2>Dwell time analytics</h2>
+      <button class="upload-btn" data-kind="entry_exit">Upload Entry/Exit video</button>
+    </div>
+    <div class="stat-grid" style="margin-top:14px">
+      <div class="stat"><div class="k">Avg dwell</div><div class="v" id="sDwellAvg">—</div></div>
+      <div class="stat"><div class="k">Current dwell</div><div class="v" id="sDwellNow">—</div></div>
+      <div class="stat"><div class="k">Zones tracked</div><div class="v" id="sZones">—</div></div>
+    </div>
+    <div class="grid2b" style="margin-top:16px">
+      <div class="card"><h3>Avg dwell per zone</h3><div class="chart-hold"><canvas id="dwellChart"></canvas></div></div>
+      <div class="card"><h3>Current occupants per zone</h3><div class="chart-hold"><canvas id="dwellOccChart"></canvas></div></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>Zone movement heatmap</h3>
+      <div class="imgbox"><img id="dwellHeat" alt="zone heatmap" style="max-height:340px" /></div></div>
+  </section>
+
+  <!-- ======================================================== shelf -->
+  <section data-view="shelf" hidden>
+    <div class="view-head">
+      <button class="back" data-back>← Dashboard</button>
+      <h2>Shelf &amp; inventory analytics</h2>
+      <div class="runpick">Run <select data-kpick="shelf"></select></div>
+      <button class="upload-btn" data-kind="shelf">Upload Shelf video</button>
+    </div>
+    <div class="stat-grid" style="margin-top:14px">
+      <div class="stat"><div class="k">Shelves monitored</div><div class="v" id="sShelves">—</div></div>
+      <div class="stat"><div class="k">Full / Low / Out</div><div class="v" id="sShelfCounts">—</div></div>
+      <div class="stat"><div class="k">Planogram model</div><div class="v" id="sPlanogram">—</div></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>Shelf status board</h3>
+      <div style="overflow:auto"><table id="shelfTable"><thead>
+        <tr><th>Shelf</th><th>Status</th><th>Source</th><th>Confirmed</th><th>Stock-out risk</th><th>Est. time to out</th><th>Trend</th></tr>
+      </thead><tbody><tr><td colspan="7" class="empty">No shelf data yet — upload a shelf video.</td></tr></tbody></table></div>
+    </div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="card"><h3>Shelf status breakdown</h3><div class="chart-hold"><canvas id="shelfBar"></canvas></div></div>
+      <div class="card"><h3>Analytics frame</h3><div class="imgbox" id="shelfFrame"><img id="shelfVid" alt="shelf analytics frame" /></div></div>
+    </div>
+  </section>
+
+  <!-- ======================================================== AI suggestions -->
+  <section data-view="ai" hidden>
+    <div class="view-head">
+      <button class="back" data-back>← Dashboard</button>
+      <h2>AI suggestions</h2>
+    </div>
+    <div class="rec-bar" style="margin-top:14px">
+      <div class="tag">AI<br/>Recommendation</div>
+      <div class="msg ok" id="aiRecMsg">No recommendations available yet.</div>
+      <div class="src" id="aiRecSrc"></div>
+    </div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="card"><h3>Active alerts</h3><div id="aiAlerts"><div class="empty">No active alerts.</div></div></div>
+      <div class="card"><h3>Alert severity counts</h3><div id="aiAlertsOld"><div class="empty">—</div></div></div>
+    </div>
+  </section>
+</main>
+
+<div class="privacy">Privacy-first retail intelligence — anonymous track ids only, no facial recognition anywhere.</div>
+
+<input type="file" id="fileInput" accept="video/*,.mp4,.mov,.avi,.mkv,.webm,.m4v" style="display:none" />
+<div id="dropHint">Drop video to run analytics</div>
 
 <script>
 const $=id=>document.getElementById(id);
+const KINDS={'entry_exit':'Entry / Exit','counter':'Checkout queue','shelf':'Shelf / Inventory'};
+let SNAP=null;            // live snapshot from WS
+let HIST={minutes:[],hourly:[],daily:[]};  // history (live or stored)
+let RUNS=[];              // saved run list
+let REC={live:false,recommendation:null,run_id:null};
+let STORED=null;          // detail object of a saved run (used when not live)
+let charts={}, mjpegOn=false, pendingKind='entry_exit';
 
-let qc,fc,hc;
-function initCharts(){
-  if(qc){qc.destroy();qc=null;}
-  if(fc){fc.destroy();fc=null;}
-  if(hc){hc.destroy();hc=null;}
-  const base={responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},
-    scales:{x:{ticks:{color:'#93a0c4',maxTicksLimit:8,font:{size:10}},grid:{color:'#1b2340'}},
-            y:{beginAtZero:true,ticks:{color:'#93a0c4',font:{size:10}},grid:{color:'#1b2340'}}},
-    plugins:{legend:{labels:{color:'#93a0c4',boxWidth:12,font:{size:10}}}}};
-  qc=new Chart($('queueChart'),{type:'line',
-    data:{labels:[],datasets:[{label:'queue',data:[],borderColor:'#fbbf24',backgroundColor:'rgba(251,191,36,.15)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]},
-    options:{...base}});
-  fc=new Chart($('footChart'),{type:'line',
-    data:{labels:[],datasets:[
-      {label:'occupancy',data:[],borderColor:'#4c8dff',tension:.3,pointRadius:0,borderWidth:2},
-      {label:'footfall',data:[],borderColor:'#34d399',tension:.3,pointRadius:0,borderWidth:2}]},
-    options:{...base}});
-  hc=new Chart($('hourChart'),{type:'line',
-    data:{labels:[],datasets:[
-      {label:'footfall/hr',data:[],borderColor:'#34d399',tension:.3,pointRadius:0,borderWidth:2},
-      {label:'avg queue',data:[],borderColor:'#fbbf24',tension:.3,pointRadius:0,borderWidth:2}]},
-    options:{...base}});
+// ---------------------------------------------------------------- helpers
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function num(v){return (typeof v==='number'&&isFinite(v))?v:null;}
+function mean(vals){vals=(vals||[]).filter(v=>typeof v==='number'&&isFinite(v)&&v>0); return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;}
+function dAvg(d){return d&&typeof d==='object'?mean(Object.values(d)):null;}
+function fmtSec(sec){sec=num(sec); if(sec==null)return '—';
+  if(sec<60)return Math.round(sec)+'s';
+  const m=Math.floor(sec/60),s=Math.round(sec%60); return `${m}m ${s}s`;}
+function fmtTime(ts){return ts?new Date(ts*1000).toTimeString().slice(0,5):'—';}
+function fmtDate(ts){return ts?new Date(ts*1000).toLocaleString():'—';}
+function badge(s){const b=String(s??'OK').toUpperCase().replace(/[^A-Z_]/g,'');
+  const cls=['FULL','LOW','LOW_STOCK','OUT','OUT_OF_STOCK','OK','NORMAL','INFO','WARNING','HIGH','ONLINE','OFFLINE','ERROR','RECONNECTING','MODEL_NOT_AVAILABLE'].includes(b)?b:'dim';
+  return `<span class="badge ${cls}">${esc(s??'—')}</span>`;}
+function chart(id,cfg){if(charts[id])charts[id].destroy(); charts[id]=new Chart($(id),cfg); return charts[id];}
+const baseOpts={responsive:true,maintainAspectRatio:false,animation:false,
+  interaction:{mode:'index',intersect:false},
+  scales:{x:{ticks:{color:'#8fa0c8',maxTicksLimit:8,font:{size:10}},grid:{color:'#1a2749'}},
+          y:{beginAtZero:true,ticks:{color:'#8fa0c8',font:{size:10}},grid:{color:'#1a2749'}}},
+  plugins:{legend:{labels:{color:'#8fa0c8',boxWidth:12,font:{size:10}}}}};
+
+// data accessors: prefer live snapshot, else the selected stored run
+function cur(){return SNAP||(STORED&&STORED.current)||null;}
+function hist(){return SNAP?HIST:(STORED?STORED.history:HIST);}
+function activeView(){const s=[...document.querySelectorAll('main>section')].find(x=>!x.hidden); return s?s.dataset.view:null;}
+
+// ---------------------------------------------------------------- navigation
+function showView(name){
+  document.querySelectorAll('main>section').forEach(s=>s.hidden=(s.dataset.view!==name));
+  history.pushState({view:name},'', '#/'+name);
+  if(!SNAP)applyStoredRun('');
+  fillView(name);
 }
-function pushChart(ch,label,vals){
-  ch.data.labels.push(label);
-  if(!Array.isArray(vals)) vals=[vals];
-  vals.forEach((v,i)=>{if(ch.data.datasets[i])ch.data.datasets[i].data.push(v);});
-  if(ch.data.labels.length>60){ch.data.labels.shift();ch.data.datasets.forEach(d=>d.data.shift());}
-  ch.update('none');
+function fillView(name){
+  if(name==='occupancy')fillOcc();
+  if(name==='queue')fillQueue();
+  if(name==='dwell'||name==='shoppers')renderCharts();
 }
-function badge(s){
-  const b=String(s||'OK').toUpperCase().replace(/[^A-Z_]/g,'');
-  const cls=['FULL','LOW','OUT','OK','INFO','WARNING','HIGH','ONLINE','OFFLINE','ERROR','RECONNECTING','NORMAL'].includes(b)?b:'dim';
-  return `<span class="badge ${cls}">${s||'—'}</span>`;
+document.querySelector('body').addEventListener('click',e=>{
+  const t=e.target.closest('[data-click]');
+  if(t&&!e.target.closest('.upload-btn')){showView(t.dataset.click);return;}
+  const b=e.target.closest('[data-back]'); if(b){showView('dashboard');}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&location.hash.startsWith('#/'))showView('dashboard');});
+
+// ---------------------------------------------------------------- cards
+function renderCards(){
+  const c=cur(), live=!!SNAP;
+  const f=c?.footfall||{}, q=c?.queues||{}, r=c?.reid||{}, d=c?.dwell||{}, sh=c?.shelves||[];
+  // when stopped, fall back to the summary of the most recent saved run (real numbers)
+  const sm=!live&&RUNS[0]?RUNS[0].summary:null;
+  const occ=live?num(f.occupancy)??'—':(sm?sm.occupancy:'—');
+  $('mOccupancy').textContent=occ; $('mOccupancy').className='value'+(num(occ)>=22?' warn':'');
+  const entries=live?num(f.total_entries)||0:(sm?sm.entries:0);
+  const exits=live?num(f.total_exits)||0:(sm?sm.exits:0);
+  $('mFootfall').textContent=(live||sm)?`${entries} in · ${exits} out`:'entries / exits';
+  const uni=live?num(r.unique_shoppers??f.unique_shoppers)??'—':(sm?sm.unique_shoppers:'—');
+  $('mUnique').textContent=uni;
+  const qn=live?num(q.total)??'—':(sm?sm.queue_total:'—');
+  $('mQueue').textContent=qn; $('mQueue').className='value'+(num(qn)>=8?' bad':num(qn)>=4?' warn':'');
+  $('mWait').textContent=(live||sm)?`wait ≈ ${live?waitText(q):(sm?sm.wait_minutes+' min':'—')}`:'wait estimate';
+  const davg=live?dAvg(d?.avg_dwell_s):(sm?sm.avg_dwell_s:null);
+  $('mDwell').textContent=davg!=null?fmtSec(davg):'—';
+  $('mDwellSub').textContent=(live&&d?.occupancy&&typeof d.occupancy==='object'&&Object.keys(d.occupancy).length)?`${Object.keys(d.occupancy).length} zone(s) traced`:'avg time in-store';
+  const outS=sh.filter(x=>['OUT','OUT_OF_STOCK'].includes(x.status)).length;
+  const lowS=sh.filter(x=>['LOW','LOW_STOCK'].includes(x.status)).length;
+  const fullS=sh.filter(x=>x.status==='FULL').length;
+  const hasShelf=(live?sh.length:sm?sm.shelf_total:0)>0;
+  $('mShelf').textContent=!hasShelf?'—':(outS?`${outS} OUT`:lowS?`${lowS} LOW`:'OK');
+  $('mShelf').className='value '+(outS?'bad':lowS?'warn':'good');
+  $('mShelfSub').textContent=hasShelf?((live?`${fullS} FULL · ${lowS} LOW · ${outS} OUT`:`${sm.shelf_full} FULL · ${sm.shelf_low} LOW · ${sm.shelf_out} OUT`)):'shelves monitored';
+  const al=(live?c.alerts?.active:null)||[];
+  const n=al.length+(REC?.recommendation?1:0);
+  $('mAi').textContent=live?n:'—'; $('mAi').className='value '+(n?'warn':'good');
+  $('mAiSub').textContent=live?`${c.alerts?.by_severity?.INFO||0} · ${c.alerts?.by_severity?.WARNING||0} · ${c.alerts?.by_severity?.HIGH||0}`:'info · warning · high';
 }
-function fmtTime(ts){return new Date(ts*1000).toTimeString().slice(0,8);}
-function fmtWait(q){
-  if(typeof q.total!=='number') return '—';
+function waitText(q){
   const w=q.wait_minutes;
-  if(typeof w==='number') return Number(w).toFixed(1)+' min';
-  if(typeof w==='object'){const qi=(q.queues&&q.queues[0])||{};const v=w[qi.queue_id];return v?Number(v).toFixed(1)+' min':'—';}
-  return '—';
+  if(typeof w==='number')return Number(w).toFixed(1)+' min';
+  const a=mean(Object.values(w||{})); return a!=null?a.toFixed(1)+' min':'—';
 }
 
-function render(d){
-  const f=d.footfall||{}, q=d.queues||{}, p=q.predictions||{}, r=d.reid||{};
-  $('mOccupancy').textContent=f.occupancy??'—';
-  $('mOccupancy').className='value'+(f.occupancy>=22?' warn':'');
-  $('mFootfall').textContent=`${f.total_entries??0} in · ${f.total_exits??0} out`;
-  $('mUnique').textContent=(r.unique_shoppers??f.unique_shoppers??'—');
-  $('mQueue').textContent=q.total??'—';
-  // measured (per-track) vs estimated (rule-based) wait time
-  const meas=q.measured_wait_minutes||{};
-  const measVals=Object.values(meas).filter(x=>x&&x.count>0);
-  const measCert=measVals.length>0;
-  const measAvg=measCert?Math.round(measVals.reduce((s,x)=>s+x.avg_wait_minutes,0)/measVals.length*10)/10:null;
-  $('mWait').innerHTML=`wait est ≈ ${fmtWait(q)}`+(measAvg!=null?` · measured avg ${measAvg}m`:'');
-  $('mPred5').textContent=(p['5min']??p['predicted_queue_length_5min'])??'—';
-  $('mPred10').textContent=(p['10min']??p['predicted_queue_length_10min'])??'—';
-  $('pm10').textContent='forecast';
-  const iv10=p['interval_10min'];
-  let conf=p.confidence;
-  if(conf==null&&iv10) conf=Math.max(0,1-Math.min(1,(iv10.high-iv10.low)/12));
-  $('mConf').textContent=conf!=null?Math.round(conf*100)+'%':'—';
-  $('mInterval').textContent=iv10?`${iv10.low}–${iv10.high}`:'—';
-  $('predSource').innerHTML=(function(){
-    const ps=String(q.prediction_source||'—').toLowerCase();
-    const lab={model:'ML model',blend:'ML + trend',fallback:'trend only'}[ps]||(q.prediction_source||'—');
-    return `<span class="badge ${['model','blend','fallback'].includes(ps)?ps:'dim'}"
-      title="model=trained ML model alone · blend=trained ML+trend (preferred) · fallback=no trained model, trend extrapolation">pred: ${lab}</span>`;
-  })();
-  const st=String(d.congestion_status||'').toLowerCase();
-  $('mStatus').textContent=(d.congestion_status||'—');
-  $('mStatus').className='value '+(st==='high'?'bad':st==='medium'||st==='moderate'?'warn':'good');
-  // per-checkout rows: length · est wait · measured avg wait
-  const mon=(q.queues&&q.queues.length)?q.queues
-    .map(x=>{
-      const mv=(meas[x.queue_id]||{}); const ms=mv.count>0?` · measured avg ${mv.avg_wait_minutes}m`:'';
-      return `<div><span>${x.queue_id}</span><span>${x.length} · est ${fmtWait1(x)}`+ms+`</span></div>`;}).join(''):'';
-  $('monitor').innerHTML=mon?'<div style="color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-size:10px;margin-bottom:2px">Per-checkout</div>'+mon:'';
-  // recommendation
-  const rec=q.recommendation_detail||q.recommendation;
-  if(rec){
-    if(typeof rec==='string'){ $('recMsg').textContent=rec; $('recMsg').className='msg action'; $('recFactors').innerHTML=''; }
-    else{
-      const action=rec.recommend_action||'none';
-      $('recMsg').textContent=rec.text||rec.reason||'—';
-      $('recMsg').className='msg '+(action==='open_counter'?'action':'none');
-      const fx=rec.factors||{};
-      $('recFactors').innerHTML=Object.entries(fx)
-        .filter(([k])=>['current_queue','predicted_queue','queue_growth_rate_per_min','footfall_current','open_counters'].includes(k))
-        .map(([k,v])=>`<span class="factor">${k}: ${(v==null?'—':v)}</span>`).join('');
-    }
+// recommendation bar
+function renderRec(){
+  const rec=REC&&REC.recommendation;
+  const msg=$('recMsg'), src=$('recSrc');
+  if(!rec){msg.textContent='No recommendations available yet.';msg.className='msg ok';src.innerHTML='';}
+  else{
+    msg.textContent=rec.text||'Actionable recommendation.';
+    msg.className='msg '+(rec.source==='queue'?'warn':'ok');
+    const fx=rec.factors||{};
+    src.innerHTML=`${badge(rec.source)} <div class="factors">${Object.entries(fx).filter(([k,v])=>k!=='shelves'&&v!=null).map(([k,v])=>`<span class="factor">${esc(k)}: ${esc(typeof v==='number'?+v.toFixed(1):v)}</span>`).join('')}</div>`;
   }
-  // shelves: list OR {shelves:[..]} — show source + confirmed
-  const shRaw=d.shelves; let shList=null;
-  if(Array.isArray(shRaw)) shList=shRaw;
-  else if(shRaw&&Array.isArray(shRaw.shelves)) shList=shRaw.shelves;
-  if(shList&&shList.length){
-    $('shelves').innerHTML=`<table><thead><tr><th>Shelf</th><th>Status</th><th>Src</th><th>Conf</th><th>Risk</th></tr></thead><tbody>`+
-      shList.map(s=>`<tr><td>${s.shelf_id||s.id||'—'}</td><td>${badge(s.status)}</td>
-        <td><span class="badge dim">${s.source||'heuristic'}</span></td>
-        <td>${s.confirmed?'✓':'-'}</td>
-        <td>${typeof s.stock_out_risk==='number'?Math.round(s.stock_out_risk*100)+'%':(s.stock_out_risk||'—')}</td></tr>`).join('')+
-      `</tbody></table>`;
-  } else { $('shelves').innerHTML='<div class="empty">No shelf data yet.</div>'; }
-  function fmtWait1(x){const w=x.wait_minutes;return w!==null&&w!==undefined?Number(w).toFixed(1)+'m':'—';}
-  // charts + heatmap
-  pushChart(qc, fmtTime(d.ts), q.total||0);
-  pushChart(fc, fmtTime(d.ts), [(f.occupancy||0),(f.total_entries||0)]);
-  $('heatmap').style.visibility='visible';
-  $('heatmap').src='/api/heatmap.png?v='+Date.now();
-  // live frame = MJPEG push stream of the EXACT frame being analysed
-  _showMjpeg(true);
-  // unified alert feed (from the live snapshot)
-  renderAlerts(d.alerts);
+  if($('aiRecMsg')){$('aiRecMsg').textContent=msg.textContent;$('aiRecMsg').className=msg.className;$('aiRecSrc').innerHTML=src.innerHTML;}
 }
 
-// ------------------------------------------------------------- alert feed
-function renderAlerts(a){
-  const list=$('alertList');
-  if(!a){ list.innerHTML='<div class="empty">No active alerts.</div>'; $('alertCounts').innerHTML=''; return; }
-  const act=a.active||[];
-  list.innerHTML=act.length?act.map(x=>
-    `<div class="alert-item">${badge(x.severity)}<span title="${x.type} · ${x.source}">${x.message||'—'}</span></div>`
-  ).join(''):'<div class="empty">No active alerts.</div>';
-  const c=a.by_severity||{};
-  $('alertCounts').innerHTML=`<div><span>INFO · WARNING · HIGH</span><span>${c.INFO||0} · ${c.WARNING||0} · ${c.HIGH||0}</span></div>`+
-    `<div><span>Webhook</span><span>${a.webhook_enabled?'enabled':'off'}</span></div>`;
+// ---------------------------------------------------------------- stored runs
+function bestRun(kind){return RUNS.find(r=>r.kind===kind)||RUNS[0];}
+function fillRunPickers(){
+  document.querySelectorAll('select[data-kpick]').forEach(sel=>{
+    const kind=sel.dataset.kpick;
+    const opts=RUNS.filter(r=>!kind||r.kind===kind).map(r=>{
+      const total=r.summary;
+      let label=`${KINDS[r.kind]} · ${fmtDate(r.ended_ts)}`;
+      if(kind==='entry_exit')label+=` · ${total.unique_shoppers} uniq`;
+      if(kind==='counter')label+=` · queue ${total.queue_total}`;
+      if(kind==='shelf')label+=` · ${total.shelf_total} shelves`;
+      return `<option value="${r.id}">${label}</option>`;
+    }).join('');
+    const optAll=`<option value="">${SNAP?`live${STORED&&STORED.kind===kind?' (saved shown)':''}`:'auto (latest)'}</option>`+opts;
+    if(sel.innerHTML!==optAll){sel.innerHTML=optAll; sel.value=sel.dataset.pick||'';}
+  });
 }
-
-// ------------------------------------------------------------- camera health
-async function refreshHealth(){
+async function applyStoredRun(selId){
+  if(SNAP)return;
+  const sel=selId?document.querySelector(`#${selId}`):null;
+  const kind=sel?sel.closest('section').dataset.view:null;
+  const runId=sel?sel.value:(bestRun(kind)?bestRun(kind).id:null);
+  if(!runId){STORED=null; return;}
   try{
-    const r=await fetch('/api/system/performance'); const j=await r.json();
-    const cams=Object.values(j.cameras||{});
-    $('cameraHealth').innerHTML=cams.length?
-      '<table><thead><tr><th>Camera</th><th>State</th><th>FPS</th><th>Lat</th><th>Frames</th><th>Err</th><th>Rcn</th></tr></thead><tbody>'+
-      cams.map(c=>`<tr><td>${c.camera_id}</td><td>${badge(c.state)}</td>
-        <td>${c.fps.toFixed?c.fps.toFixed(1):c.fps}</td>
-        <td>${c.processing_latency_ms?c.processing_latency_ms.avg_ms+'ms':'—'}</td>
-        <td>${c.frames_processed}</td><td>${c.errors}</td><td>${c.reconnects}</td></tr>`).join('')+
-      '</tbody></table>': '<div class="empty">No live camera.</div>';
+    const r=await fetch('/api/runs/'+runId); const j=await r.json();
+    if(!r.ok)return;
+    STORED=j; SNAP=null; HIST=STORED.history||HIST;
+    fillView(activeView()); renderCharts(); renderCards();
   }catch(e){}
 }
+document.querySelector('main').addEventListener('change',e=>{
+  const sel=e.target.closest('select[data-kpick]'); if(!sel)return;
+  SNAP=null; STORED=null;
+  if(sel.value){fetch('/api/runs/'+sel.value).then(r=>r.ok?r.json():null).then(j=>{
+    if(j){STORED=j;HIST=j.history||HIST;fillView(activeView());renderCharts();renderCards();}});}
+  else{fillView(activeView());}
+});
 
-// ------------------------------------------------------------- historical
+// ---------------------------------------------------------------- detail fills
+function fillOcc(){
+  const c=cur();
+  setV('sOcc',c?num(c.footfall?.occupancy)??'—':'—');
+  setV('sIn',c?num(c.footfall?.total_entries)??0:'—');
+  setV('sOut',c?num(c.footfall?.total_exits)??0:'—');
+  const mins=hist().minutes||[];
+  setV('sPeakOcc',mins.length?Math.max(0,...mins.map(m=>m.peak_occupancy)):null);
+  const img=$('occHeat');
+  if(SNAP){img.src='/api/heatmap.png?v='+Date.now();mjpeg(true);}
+  else if(STORED){img.src='/api/runs/'+STORED.id+'/heatmap.png?v='+Date.now();}
+  frameFor(img, 'occFrame','occVid');
+}
+function frameFor(_, boxId, imgId){
+  const box=$(boxId), img=$(imgId);
+  if(SNAP&&SNAP.video_frame){box.style.display=''; if(!img.src||!img.src.includes('/video_stream'))img.src='/video_stream?v='+Date.now();}
+  else if(STORED){box.style.display=''; img.removeAttribute('src'); img.src='/api/runs/'+STORED.id+'/frame.jpg?v='+Date.now();}
+  else box.style.display='none';
+}
+function fillQueue(){
+  const c=cur();
+  const q=c?.queues||{};
+  setV('sQueue',num(q.total)??'—');
+  setV('sWait',waitText(q));
+  const meas=q.measured_wait_minutes||{};
+  const mv=Object.values(meas).filter(m=>m&&m.count>0);
+  setV('sMeasWait',SNAP?(mv.length?mean(mv.map(m=>m.avg_wait_minutes))?.toFixed(1)+' min':'—'):'—');
+  const p=q.predictions||{};
+  const p5=p['5min']??p['predicted_queue_length_5min'];
+  const p10=p['10min']??p['predicted_queue_length_10min'];
+  setV('sPred10',p10??'—');
+  const src=p.source||q.prediction_source;
+  $('sPred10').innerHTML=(p10??'—')+' <span class="badge '+(src==='blend'?'blend':src==='model'?'model':src==='fallback'?'fallback':'dim')+'">'+esc(src||'source')+'</span>';
+  const rows=(q.queues||[]).map(x=>{
+    const m=meas[x.queue_id]||{};
+    return `<tr><td>${esc(x.queue_id)}</td><td>${x.length}</td>
+      <td>${num(x.wait_minutes)!=null?Number(x.wait_minutes).toFixed(1)+' min':'—'}</td>
+      <td>${m.count?Number(m.avg_wait_minutes).toFixed(1)+' min':'—'}</td><td>${badge(x.status)}</td></tr>`;}).join('');
+  $('queueTable').innerHTML=(q.queues?.length)?
+    '<table><thead><tr><th>Checkout</th><th>Length</th><th>Est wait</th><th>Measured avg</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>':
+    '<div class="empty">No checkout queue data yet.</div>';
+}
+function fillShelf(){
+  const c=cur();
+  const sh=c?.shelves||[];
+  setV('sShelves',sh.length||null);
+  const outS=sh.filter(x=>['OUT','OUT_OF_STOCK'].includes(x.status)).length;
+  const lowS=sh.filter(x=>['LOW','LOW_STOCK'].includes(x.status)).length;
+  const fullS=sh.filter(x=>x.status==='FULL').length;
+  setV('sShelfCounts',sh.length?`${fullS} / ${lowS} / ${outS}`:'—');
+  const pg=c?.planogram||{};
+  const ready=pg?.status && pg.status!=='MODEL_NOT_AVAILABLE' && pg.product_model;
+  setV('sPlanogram',ready?'READY':(pg?.status==='MODEL_NOT_AVAILABLE'?'N/A (no model)':'N/A'));
+  $('sPlanogram').className='value '+(ready?'good':'warn');
+  const rows=sh.map(s=>`<tr><td>${esc(s.shelf_id||s.id)}</td><td>${badge(s.status)}</td>
+    <td>${badge(s.source)}</td><td>${s.confirmed?'✓':'pending'}</td>
+    <td>${typeof s.stock_out_risk==='number'?Math.round(s.stock_out_risk*100)+'%':'—'}</td>
+    <td>${num(s.est_time_to_out_minutes)!=null?fmtSec(s.est_time_to_out_minutes*60):'—'}</td>
+    <td>${esc(s.trend||'—')}</td></tr>`).join('');
+  $('shelfTable').querySelector('tbody').innerHTML=sh.length?rows:'<tr><td colspan="7" class="empty">No shelf data yet — upload a shelf video.</td></tr>';
+  chart('shelfBar',{type:'bar',data:{labels:sh.map(s=>s.shelf_id),datasets:[
+    {label:'FULL',data:sh.map(s=>s.status==='FULL'?1:0),backgroundColor:'#34d399'},
+    {label:'LOW',data:sh.map(s=>['LOW','LOW_STOCK'].includes(s.status)?1:0),backgroundColor:'#fbbf24'},
+    {label:'OUT',data:sh.map(s=>['OUT','OUT_OF_STOCK'].includes(s.status)?1:0),backgroundColor:'#f87171'}
+  ]},options:{...baseOpts,scales:{x:{stacked:true,ticks:{color:'#8fa0c8',font:{size:10}},grid:{color:'#1a2749'}},y:{stacked:true,ticks:{color:'#8fa0c8',font:{size:10}},grid:{color:'#1a2749'}}},plugins:{legend:{labels:{color:'#8fa0c8',boxWidth:12,font:{size:10}}}}}});
+  frameFor(null,'shelfFrame','shelfVid');
+}
+function fillAi(){
+  const c=cur();
+  const al=(SNAP?c.alerts?.active:null)||(STORED?STORED.current.alerts?.active:null)||[];
+  $('aiAlerts').innerHTML=al.length?al.map(a=>`<div class="alert-item">${badge(a.severity)}<span title="${esc(a.type)} · ${esc(a.source)}">${esc(a.message)}</span></div>`).join(''):'<div class="empty">No active alerts.</div>';
+  const sev=(SNAP?c.alerts?.by_severity:STORED?STORED.current.alerts?.by_severity:null)||{};
+  $('aiAlertsOld').innerHTML=Object.keys(sev).length?
+    `<table><thead><tr><th>Severity</th><th>Active</th></tr></thead><tbody>
+     <tr><td>INFO</td><td>${sev.INFO||0}</td></tr>
+     <tr><td>WARNING</td><td>${sev.WARNING||0}</td></tr>
+     <tr><td>HIGH</td><td>${sev.HIGH||0}</td></tr></tbody></table>`:
+    '<div class="empty">—</div>';
+}
+function setV(id,v){$(id).innerHTML=v==null||v===''?'—':v;}
+
+// ---------------------------------------------------------------- charts
+function renderCharts(){
+  const v=activeView(); if(!v)return;
+  const m=hist().minutes||[], h=hist().hourly||[];
+  if(v==='occupancy'){
+    if(m.length)chart('occChart',{type:'line',data:{labels:m.map(x=>fmtTime(x.ts)),datasets:[
+      {label:'occupancy',data:m.map(x=>x.avg_occupancy),borderColor:'#4c8dff',tension:.3,pointRadius:0,borderWidth:2},
+      {label:'entries',data:m.map(x=>x.entries),borderColor:'#34d399',tension:.3,pointRadius:0,borderWidth:1},
+      {label:'exits',data:m.map(x=>x.exits),borderColor:'#f87171',tension:.3,pointRadius:0,borderWidth:1}]},options:{...baseOpts}});
+    if(h.length)chart('occHourChart',{type:'bar',data:{labels:h.map(x=>fmtTime(x.ts)),datasets:[
+      {label:'footfall/hr',data:h.map(x=>x.entries),backgroundColor:'#34d399'}]},options:{...baseOpts}});
+  }
+  if(v==='shoppers'&&m.length){
+    chart('uniqueChart',{type:'line',data:{labels:m.map(x=>fmtTime(x.ts)),datasets:[
+      {label:'unique shoppers (window)',data:m.map(x=>x.peak_unique),borderColor:'#a78bfa',tension:.3,pointRadius:0,borderWidth:2,fill:true,backgroundColor:'rgba(167,139,250,.15)'}]},options:{...baseOpts}});
+    if(SNAP){setV('sUnique',SNAP.reid?.unique_shoppers??SNAP.footfall?.unique_shoppers);setV('sActive',SNAP.reid?.active_identities);setV('sReid',SNAP.reid?.enabled?'ENABLED':'off');}
+    else if(STORED){setV('sUnique',STORED.current?.reid?.unique_shoppers??STORED.summary?.unique_shoppers);setV('sActive',STORED.current?.reid?.active_identities);setV('sReid',STORED.current?.reid?.enabled?'ENABLED':'off');}
+  }
+  if(v==='queue'){
+    if(m.length)chart('queueChart',{type:'line',data:{labels:m.map(x=>fmtTime(x.ts)),datasets:[
+      {label:'avg queue',data:m.map(x=>x.avg_queue),borderColor:'#fbbf24',tension:.3,pointRadius:0,borderWidth:2,fill:true,backgroundColor:'rgba(251,191,36,.15)'},
+      {label:'peak queue',data:m.map(x=>x.peak_queue),borderColor:'#4c8dff',tension:.3,pointRadius:0,borderWidth:1}]},options:{...baseOpts}});
+    const c=cur(), q=c?.queues||{}, p=q.predictions||{};
+    if(c){ // when live, per-zone live history exists under q.history; prefer persisted history anyway
+      const iv=p.interval_10min||{};
+      const now=num(q.total)??0, p5=p['5min']??p['predicted_queue_length_5min']??null, p10=p['10min']??p['predicted_queue_length_10min']??null;
+      chart('predChart',{type:'bar',data:{labels:['now','5 min','10 min'],
+        datasets:[{label:'queue length',data:[now,p5,p10].map(x=>x==null?null:+x.toFixed?+x.toFixed(1):x),backgroundColor:['#8fa0c8','#4c8dff','#fbbf24']},
+        ...(iv.high!=null?[
+          {type:'line',label:'80% CI high (10m)',data:[null,null,iv.high],borderColor:'#f87171',borderDash:[5,4],pointRadius:0,borderWidth:1.5},
+          {type:'line',label:'80% CI low (10m)',data:[null,null,iv.low],borderColor:'#f87171',borderDash:[5,4],pointRadius:0,borderWidth:1.5}]:[])]},
+        options:{...baseOpts,plugins:{legend:{labels:{color:'#8fa0c8',boxWidth:12,font:{size:10}}}}}});
+      const w=Object.entries(q.wait_minutes||{}).filter(([,v])=>num(v)!=null);
+      const mm=Object.entries(q.measured_wait_minutes||{});
+      chart('waitChart',{type:'bar',data:{labels:w.map(([k])=>k),datasets:[
+        {label:'est (rule-based)',data:w.map(([,v])=>v),backgroundColor:'#4c8dff'},
+        {label:'measured avg',data:w.map(([k])=>{const x=mm.find(([kk])=>kk===k);return x&&x[1]&&x[1].count?x[1].avg_wait_minutes:null;}),backgroundColor:'#34d399'}]},options:{...baseOpts}});
+    }
+  }
+  if(v==='dwell'){
+    const d=cur()?.dwell||{};
+    const av=d.avg_dwell_s||{}, oz=d.occupancy||{};
+    chart('dwellChart',{type:'bar',data:{labels:Object.keys(av),datasets:[{label:'avg dwell (s)',data:Object.values(av).map(Math.round),backgroundColor:'#4c8dff'}]},options:{...baseOpts}});
+    chart('dwellOccChart',{type:'bar',data:{labels:Object.keys(oz),datasets:[{label:'occupants now',data:Object.values(oz),backgroundColor:'#34d399'}]},options:{...baseOpts}});
+    setV('sDwellAvg',fmtSec(dAvg(av)));
+    setV('sDwellNow',fmtSec(dAvg(d.current_dwell_s)));
+    setV('sZones',Object.keys(av).length||null);
+    const img=$('dwellHeat');
+    if(SNAP)img.src='/api/heatmap.png?v='+Date.now();
+    else if(STORED)img.src='/api/runs/'+STORED.id+'/heatmap.png?v='+Date.now();
+  }
+}
+
+// ---------------------------------------------------------------- uploads
+function bindUploads(){
+  document.querySelectorAll('.upload-btn').forEach(b=>{
+    b.addEventListener('click',e=>{e.stopPropagation();pendingKind=b.dataset.kind;$('fileInput').click();});
+  });
+  $('fileInput').onchange=()=>{if($('fileInput').files[0])upload($('fileInput').files[0],pendingKind);$('fileInput').value='';};
+  // global drag & drop
+  ['dragenter','dragover'].forEach(ev=>window.addEventListener(ev,e=>{e.preventDefault();$('dropHint').classList.add('on');}));
+  window.addEventListener('drop',e=>{e.preventDefault();$('dropHint').classList.remove('on');
+    if(e.dataTransfer.files[0])upload(e.dataTransfer.files[0],pendingKind);});
+  window.addEventListener('dragleave',e=>{if(e.target===document.body)$('dropHint').classList.remove('on');});
+}
+async function upload(file,kind){
+  const fd=new FormData(); fd.append('file',file); fd.append('kind',kind);
+  setStatus(`Uploading ${file.name} (${KINDS[kind]||kind})…`);
+  try{
+    const r=await fetch('/api/run/video',{method:'POST',body:fd});
+    const j=await r.json(); if(!r.ok)throw new Error(j.detail||('status '+r.status));
+    STORED=null; setStatus(`Running ${KINDS[kind]||kind} analytics on ${file.name} ✓`);
+    showView('dashboard'); refreshRuns();
+  }catch(e){setStatus('Error: '+e.message,true);}
+}
+function setStatus(msg,err){const s=$('statusLine');s.textContent=msg;s.className='status-line'+(err?' err':'');}
+
+// ---------------------------------------------------------------- actions
+$('demoBtn').onclick=async()=>{
+  setStatus('Starting demo run…');
+  try{const r=await fetch('/api/run/demo',{method:'POST'});const j=await r.json();if(!r.ok)throw new Error(j.detail);
+    STORED=null;setStatus('Demo running ✓');showView('dashboard');}catch(e){setStatus('Error: '+e.message,true);}
+};
+$('stopBtn').onclick=async()=>{
+  try{const r=await fetch('/api/run/stop',{method:'POST'});const j=await r.json();if(!r.ok)throw new Error(j.detail);
+    setStatus('Run stopped — results saved to history.');SNAP=null;refreshRuns();}catch(e){setStatus('Error: '+e.message,true);}
+};
+
+// ---------------------------------------------------------------- polling
+async function refreshRunStatus(){
+  try{
+    const r=await fetch('/api/run/status');const s=await r.json();
+    $('modePill').textContent=`${s.run.mode||'none'}${s.running?' · running':Object.keys(RUNS).length?'':' · finished'}${s.run.kind?' · '+KINDS[s.run.kind]:''}`;
+  }catch(e){}
+}
+async function refreshRec(){
+  try{const r=await fetch('/api/analytics/recommendation');REC=await r.json();renderRec();}
+  catch(e){REC={live:false,recommendation:null};}
+}
+async function refreshRuns(){
+  try{
+    const r=await fetch('/api/runs');const j=await r.json();RUNS=j.runs||[];
+    fillRunPickers();
+    if(!SNAP&&!STORED&&RUNS.length&&['occupancy','queue','shelf'].includes(activeView()))applyStoredRun('');
+    renderCards();
+  }catch(e){}
+}
 async function refreshHistory(){
   try{
-    const r=await fetch('/api/analytics/history'); const j=await r.json();
-    if(!j.live) return;
-    const hourly=j.hourly||[];
-    if(hourly.length){
-      hc.data.labels=hourly.map(h=>fmtTime(h.ts));
-      hc.data.datasets[0].data=hourly.map(h=>h.entries);
-      hc.data.datasets[1].data=hourly.map(h=>h.avg_queue);
-      hc.update('none');
-    }
-    const daily=j.daily||[];
-    $('dailyTable').innerHTML=daily.length?
-      '<table><thead><tr><th>Date</th><th>Visits</th><th>Peak occ</th><th>Peak queue</th><th>Congested min</th></tr></thead><tbody>'+
-      daily.map(d=>`<tr><td>${d.date}</td><td>${d.visits}</td><td>${d.peak_occupancy}</td>
-        <td>${d.peak_queue}</td><td>${d.congested_minutes_est}</td></tr>`).join('')+
-      '</tbody></table>':'<div class="empty">Collecting…</div>';
+    const r=await fetch('/api/analytics/history');const j=await r.json();
+    if(j.live){HIST=j;renderCharts();}
   }catch(e){}
 }
 
-let _mjpegOn=false;
-function _showMjpeg(on){
-  const wrap=$('videoWrap'), img=$('vid');
-  if(on){
-    if(_mjpegOn){ wrap.classList.add('on'); return; }   // already streaming
-    _mjpegOn=true;
-    document.querySelector('.vlab').textContent='Live analytics frame (MJPEG, de-identified)';
-    img.onload=()=>{ wrap.classList.add('on'); };
-    img.onerror=()=>{ _mjpegOn=false; wrap.classList.remove('on'); img.removeAttribute('src'); };
-    img.src='/video_stream?v='+Date.now();
-    wrap.classList.add('on');
-  } else {
-    _mjpegOn=false; img.onload=null; img.onerror=null;
-    img.removeAttribute('src'); wrap.classList.remove('on');
-  }
-}
-
+// ---------------------------------------------------------------- websocket
 function connect(){
   const proto=location.protocol==='https:'?'wss':'ws';
   const ws=new WebSocket(`${proto}://${location.host}/ws/live`);
   ws.onopen=()=>{$('connPill').textContent='● live';$('connPill').className='pill live';};
-  ws.onmessage=(ev)=>{
+  ws.onmessage=ev=>{
     try{const msg=JSON.parse(ev.data);
-      if(msg.type==='live_snapshot'){const cam=Object.values(msg.data||{})[0];if(cam)render(cam);}
-      else if(msg.type==='welcome'){$('connPill').textContent='● connected';}
+      if(msg.type==='live_snapshot'){
+        const cam=Object.values(msg.data||{})[0];
+        if(cam){SNAP=cam;STORED=null;renderCards();renderCharts();if(activeView()==='occupancy')fillOcc();}
+      }
     }catch(e){}
   };
   ws.onclose=()=>{$('connPill').textContent='◦ disconnected';$('connPill').className='pill off';setTimeout(connect,2000);};
 }
-async function api(url,opts){const r=await fetch(url,{method:'POST',...(opts||{})});const j=await r.json();if(!r.ok)throw new Error(j.detail||('status '+r.status));return j;}
-let currentMode='none';
-async function refreshStatus(){
-  try{const s=await api('/api/run/status',{method:'GET'});
-    currentMode=s.run.mode||'none';
-    if(s.run.mode)$('modePill').textContent=`${s.run.mode} · ${s.running?'running':'finished'}`;
-    if(s.run.error){$('statusLine').textContent='Error: '+s.run.error;$('statusLine').className='status-line err';}
-    const runningNow = s.running && (s.run.mode==='video' || s.run.mode==='demo');
-    if(!runningNow && $('videoWrap').classList.contains('on')) _showMjpeg(false);
-  }catch(e){}
-}
-function updateVideo(s){ currentMode = (s&&s.run? s.run.mode : 'none'); }
-$('demoBtn').onclick=async()=>{$('statusLine').textContent='Starting demo run…';$('statusLine').className='status-line';
-  _showMjpeg(false);
-  try{await api('/api/run/demo');$('statusLine').textContent='Demo running ✓';initCharts();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
-$('stopBtn').onclick=async()=>{try{await api('/api/run/stop');$('statusLine').textContent='Run stopped.';_showMjpeg(false);refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}};
-const dz=$('dropZone'), fi=$('fileInput');
-dz.onclick=()=>fi.click();
-dz.ondragover=e=>{e.preventDefault();dz.classList.add('drag');};
-dz.ondragleave=()=>dz.classList.remove('drag');
-dz.ondrop=e=>{e.preventDefault();dz.classList.remove('drag');if(e.dataTransfer.files[0])upload(e.dataTransfer.files[0]);};
-fi.onchange=()=>{if(fi.files[0])upload(fi.files[0]);};
-async function upload(file){
-  const fd=new FormData();fd.append('file',file);
-  $('statusLine').textContent=`Uploading ${file.name}…`;initCharts();
-  try{const r=await fetch('/api/run/video',{method:'POST',body:fd});const j=await r.json();if(!r.ok)throw new Error(j.detail);
-    $('statusLine').textContent=`Video run started ✓`;updateVideo(j);refreshStatus();}catch(e){$('statusLine').textContent=e.message;$('statusLine').className='status-line err';}
-  fi.value='';
-}
-initCharts(); refreshStatus(); refreshHealth(); refreshHistory();
-setInterval(refreshStatus,3000); setInterval(refreshHealth,5000); setInterval(refreshHistory,10000);
+
+// ---------------------------------------------------------------- boot
+window.addEventListener('hashchange',()=>{const h=location.hash.replace('#/','');if(h&&document.querySelector(`[data-view="${h}"]`))showView(h);});
+bindUploads();
+refreshRunStatus(); refreshRec(); refreshRuns(); refreshHistory();
+setInterval(refreshRunStatus,3000); setInterval(refreshRec,3000);
+setInterval(refreshRuns,8000); setInterval(refreshHistory,10000);
 connect();
 </script>
 </body>

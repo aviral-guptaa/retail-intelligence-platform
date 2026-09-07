@@ -13,10 +13,17 @@ data/*.db
 data/raw/*
 data/processed/*
 data/uploads/*
+# dashboard-served run results (screenshots/heatmaps of past runs)
+data/run_results/*
 # regenerable via scripts/build_shelf_dataset.py
 data/shelf/
 # regenerable via scripts/build_product_dataset.py
 data/shelf_det/
+# regenerable via scripts/build_sku110k_subset.py (downloads SKU-110K CVPR19)
+data/sku110k_fixed/
+data/sku110k_det/
+data/sku110k_fixed.tar.gz
+data/sku110k.part*
 models/prediction/*.joblib
 models/yolo/*.pt
 models/yolo/*.onnx
