@@ -104,14 +104,14 @@
     border:1px solid var(--edge); padding:9px 15px; border-radius:12px; font-weight:600; white-space:nowrap}
 
   /* ============================================================ metric cards */
-  .cards{display:grid; gap:22px; margin-bottom:8px}
+  .cards{display:grid; gap:18px; margin-bottom:8px}
   @media(min-width:1180px){.cards{grid-template-columns:repeat(3,1fr)}}
   @media(min-width:720px) and (max-width:1179.98px){.cards{grid-template-columns:repeat(2,1fr)}}
   @media(max-width:719.98px){.cards{grid-template-columns:1fr}}
-  .metric{position:relative; cursor:pointer; min-height:250px; padding:24px;
+  .metric{position:relative; cursor:pointer; min-height:190px; padding:18px;
     background:linear-gradient(145deg,#151E31 0%,#101827 100%);
-    border:1px solid rgba(80,110,170,.25); border-top:2px solid var(--acc,#3B82F6); border-radius:20px;
-    display:flex; flex-direction:column; gap:8px;
+    border:1px solid rgba(80,110,170,.25); border-top:2px solid var(--acc,#3B82F6); border-radius:16px;
+    display:flex; flex-direction:column; gap:6px;
     box-shadow:0 10px 30px rgba(0,0,0,.20), 0 0 25px color-mix(in srgb, var(--acc,#3B82F6) 14%, transparent);
     transition:transform .25s ease, box-shadow .25s ease, border-color .25s ease;
     overflow:hidden}
@@ -124,41 +124,41 @@
     box-shadow:0 18px 40px rgba(0,0,0,.30), 0 0 35px color-mix(in srgb, var(--acc,#3B82F6) 26%, transparent)}
   .metric:hover .glow{opacity:.10}
   .metric .m-top{display:flex; align-items:center; justify-content:space-between}
-  .metric .m-ico{width:48px; height:48px; border-radius:14px; flex:none; display:grid; place-items:center;
+  .metric .m-ico{width:38px; height:38px; border-radius:11px; flex:none; display:grid; place-items:center;
     background:color-mix(in srgb, var(--acc,#3B82F6) 15%, transparent); color:var(--acc,#3B82F6);
     box-shadow:0 0 18px color-mix(in srgb, var(--acc,#3B82F6) 12%, transparent)}
-  .metric .m-ico svg{width:24px; height:24px}
-  .metric .m-arr{width:34px; height:34px; border-radius:50%; flex:none; display:grid; place-items:center;
+  .metric .m-ico svg{width:20px; height:20px}
+  .metric .m-arr{width:28px; height:28px; border-radius:50%; flex:none; display:grid; place-items:center;
     border:1px solid var(--edge); color:var(--acc,#3B82F6); transition:.22s}
-  .metric .m-arr svg{width:15px; height:15px}
+  .metric .m-arr svg{width:13px; height:13px}
   .metric:hover .m-arr{border-color:color-mix(in srgb, var(--acc,#3B82F6) 60%, transparent);
     background:color-mix(in srgb, var(--acc,#3B82F6) 10%, transparent)}
   .metric:hover .m-arr svg{transform:translateX(2px)}
-  .metric .m-title{font-size:15px; font-weight:600; color:var(--txt2); margin-top:8px; letter-spacing:.1px}
-  .metric .m-val{font-size:44px; font-weight:700; letter-spacing:-1.2px; line-height:1.05; color:#F8FAFC; margin-top:2px}
-  .metric .m-sub{font-size:13px; color:var(--sub)}
-  .metric .m-trend{margin-top:6px; display:flex; flex-direction:column; gap:3px; line-height:1.1}
-  .metric .m-trend .t1{font-weight:800; font-size:15px; letter-spacing:.2px}
+  .metric .m-title{font-size:13.5px; font-weight:600; color:var(--txt2); margin-top:6px; letter-spacing:.1px}
+  .metric .m-val{font-size:34px; font-weight:700; letter-spacing:-1px; line-height:1.05; color:#F8FAFC; margin-top:1px}
+  .metric .m-sub{font-size:12px; color:var(--sub)}
+  .metric .m-trend{margin-top:4px; display:flex; flex-direction:column; gap:2px; line-height:1.1}
+  .metric .m-trend .t1{font-weight:800; font-size:13px; letter-spacing:.2px}
   .metric .m-trend .t1.up{color:var(--green2)}
   .metric .m-trend .t1.down{color:var(--red)}
   .metric .m-trend .t1.warn{color:#FB923C}
   .metric .m-trend .t1.flat{color:var(--sub)}
-  .metric .m-trend .t2{font-size:11.5px; color:var(--muted); font-weight:500}
-  .metric .foot{margin-top:auto; padding-top:14px; border-top:1px solid var(--edge2); display:flex; align-items:center}
+  .metric .m-trend .t2{font-size:11px; color:var(--muted); font-weight:500}
+  .metric .foot{margin-top:auto; padding-top:10px; border-top:1px solid var(--edge2); display:flex; align-items:center}
   .metric .hint{font-size:10.5px; color:var(--muted)}
   .upload-cta{display:flex; align-items:center; gap:10px; width:100%; text-align:left; cursor:pointer; color:inherit;
     background:color-mix(in srgb, var(--acc,#3B82F6) 10%, transparent);
     border:1px solid color-mix(in srgb, var(--acc,#3B82F6) 35%, transparent);
-    border-radius:12px; padding:9px 12px; transition:.2s; font-family:inherit}
+    border-radius:10px; padding:7px 10px; transition:.2s; font-family:inherit}
   .upload-cta:hover{background:color-mix(in srgb, var(--acc,#3B82F6) 19%, transparent);
     border-color:color-mix(in srgb, var(--acc,#3B82F6) 60%, transparent)}
-  .upload-cta .u-ic{width:30px; height:30px; border-radius:9px; flex:none; display:grid; place-items:center;
+  .upload-cta .u-ic{width:26px; height:26px; border-radius:8px; flex:none; display:grid; place-items:center;
     background:color-mix(in srgb, var(--acc,#3B82F6) 22%, transparent); color:var(--acc,#3B82F6)}
-  .upload-cta .u-ic svg{width:15px; height:15px}
+  .upload-cta .u-ic svg{width:13px; height:13px}
   .upload-cta .u-txt{display:flex; flex-direction:column; gap:1px; min-width:0}
-  .upload-cta .u-main{font-size:12.5px; font-weight:700; color:#E6EDFA}
-  .upload-cta .u-help{font-size:10.5px; color:var(--muted)}
-  .mini-status{display:flex; gap:12px; margin-top:8px; font-size:10.5px; color:#8FA0B8}
+  .upload-cta .u-main{font-size:11.5px; font-weight:700; color:#E6EDFA}
+  .upload-cta .u-help{font-size:10px; color:var(--muted)}
+  .mini-status{display:flex; gap:10px; margin-top:5px; font-size:10px; color:#8FA0B8}
   .mini-status .s{display:inline-flex; align-items:center; gap:5px}
   .mini-status .d{width:6px;height:6px;border-radius:50%}
   .d.green{background:var(--green)} .d.amber{background:var(--warn)} .d.red{background:var(--red)}
@@ -1097,9 +1097,9 @@ function emptyState(title,sub,withBtn=true){
 function statCard(k,v,color){return `<div class="stat"><div class="k">${k}</div><div class="v" style="color:${color}">${esc(v)}</div></div>`;}
 
 // ================================================================ UPLOAD MODAL
-let uploadKind='entry_exit', analyzing=false;
+let uploadKind='entry_exit', analyzing=false, pendingFile=null;
 function openUpload(kind){
-  uploadKind=kind; analyzing=false;
+  uploadKind=kind; analyzing=false; pendingFile=null;
   const k=KINDS[kind]||KINDS.entry_exit;
   $('upTitle').textContent=k.title; $('upDesc').textContent=k.desc;
   $('upIco').innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V7m0 0l-5 5m5-5l5 5M5 3h14"/></svg>`;
@@ -1128,6 +1128,7 @@ function openUpload(kind){
   document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',closeUpload));
 }
 function selectFile(file){
+  pendingFile=file;
   const sz=file.size?Math.round(file.size/1024/1024*10)/10+' MB':'';
   E('fileRow').innerHTML=`<div class="file-row">
     <svg viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" style="width:22px;height:22px;flex:none"><path d="M7 3h7l5 5v13H7z"/></svg>
@@ -1135,7 +1136,7 @@ function selectFile(file){
   E('analyzeBtn').disabled=false;
 }
 async function analyzeVideo(){
-  const fi=$('fileInput'); let file=fi.files[0];
+  const file=pendingFile;
   if(!file){const dz=$('dropZone');dz.click();return;}
   analyzing=true;
   E('upBody').innerHTML=`
