@@ -7,10 +7,13 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root{
-    --bg:#080D1B; --sidebar:#0B1222; --card:#111A2D; --card2:#0E1626;
-    --edge:#243252; --edge2:#1A2749; --txt:#E8EDF7; --muted:#8F9AB3;
-    --blue:#3B82F6; --purple:#8B5CF6; --orange:#F97316; --teal:#14B8A6;
-    --green:#34D399; --red:#F87171; --yellow:#FBBF24; --cyan:#22D3EE; --pink:#EC4899;
+    --bg:#080D18; --bg2:#0A1020; --sidebar:#0B1120;
+    --card:linear-gradient(145deg,#151E31 0%,#101827 100%); --card2:#0F1726;
+    --edge:rgba(80,110,170,.25); --edge2:rgba(148,163,184,.12);
+    --txt:#F1F5F9; --txt2:#D8E0ED; --sub:#A8B3C7; --muted:#77839A;
+    --blue:#3B82F6; --purple:#8B5CF6; --orange:#F59E0B; --teal:#2DD4BF;
+    --green:#34D399; --green2:#4ADE80; --red:#FB7185; --warn:#F59E0B;
+    --yellow:#FBBF24; --gold:#FACC15; --cyan:#22D3EE; --pink:#EC4899; --indigo:#6366F1;
     --radius:16px; --shadow:0 12px 34px rgba(0,0,0,.45); --glow:0 0 24px rgba(59,130,246,.25);
   }
   *{box-sizing:border-box; margin:0; padding:0}
@@ -23,12 +26,12 @@
     overflow:hidden; -webkit-font-smoothing:antialiased}
   button{font-family:inherit}
   ::-webkit-scrollbar{width:9px;height:9px}
-  ::-webkit-scrollbar-thumb{background:var(--edge2);border-radius:8px}
+  ::-webkit-scrollbar-thumb{background:rgba(148,163,184,.25);border-radius:8px}
   ::-webkit-scrollbar-track{background:transparent}
 
   /* ============================================================ layout shell */
   .shell{display:flex; height:100vh; width:100vw}
-  main{flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden}
+  main{flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; background:var(--bg2)}
 
   /* sidebar */
   aside{width:240px; flex:none; background:var(--sidebar); border-right:1px solid var(--edge2);
@@ -48,8 +51,8 @@
     transition:.2s; user-select:none}
   .nav-item svg{width:17px; height:17px; flex:none; opacity:.85}
   .nav-item:hover{color:var(--txt); background:rgba(59,130,246,.08)}
-  .nav-item.active{color:#fff; background:linear-gradient(90deg,rgba(59,130,246,.22),rgba(59,130,246,.06));
-    border-color:rgba(59,130,246,.28)}
+  .nav-item.active{color:#fff; background:linear-gradient(90deg,rgba(59,130,246,.24),rgba(59,130,246,.07));
+    border-color:rgba(59,130,246,.45); box-shadow:0 0 16px rgba(59,130,246,.15)}
   .nav-item.active svg{color:var(--blue)}
   .nav-sep{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1.4px;
     padding:16px 11px 6px; font-weight:700; opacity:.7}
@@ -67,8 +70,8 @@
   .user .em{font-size:10px; color:var(--muted)}
 
   /* topbar */
-  .topbar{flex:none; display:flex; align-items:center; gap:14px; padding:13px 22px;
-    background:rgba(8,13,27,.6); backdrop-filter:blur(10px); border-bottom:1px solid var(--edge2)}
+  .topbar{flex:none; display:flex; align-items:center; gap:14px; padding:13px 28px;
+    background:rgba(10,16,32,.65); backdrop-filter:blur(10px); border-bottom:1px solid var(--edge2)}
   .hamburger{background:none; border:none; color:var(--muted); cursor:pointer; padding:4px}
   .hamburger svg{width:22px; height:22px}
   .topbar h1{font-size:17px; font-weight:800}
@@ -87,67 +90,93 @@
   .btn.ghost:hover{color:var(--txt); border-color:#365193}
 
   /* ============================================================ content */
-  .content{flex:1; overflow:auto; padding:22px}
+  .content{flex:1; overflow:auto; padding:34px}
   .view{display:none; animation:fade .28s ease}
   .view.active{display:block}
   @keyframes fade{from{opacity:0; transform:translateY(6px)}to{opacity:1; transform:none}}
   .hidden{display:none!important}
 
   /* welcome row */
-  .hero{display:flex; align-items:flex-end; gap:14px; margin-bottom:18px; flex-wrap:wrap}
-  .hero h2{font-size:24px; font-weight:800; letter-spacing:-.3px}
-  .hero p{color:var(--muted); font-size:13px; margin-top:3px}
-  .hero .date{margin-left:auto; font-size:12px; color:var(--muted); background:var(--card);
-    border:1px solid var(--edge); padding:8px 14px; border-radius:10px; font-weight:600}
+  .hero{display:flex; align-items:flex-end; gap:14px; margin-bottom:24px; flex-wrap:wrap}
+  .hero h2{font-size:36px; font-weight:700; letter-spacing:-.5px; color:var(--txt); line-height:1.1}
+  .hero p{color:var(--sub); font-size:16px; margin-top:4px}
+  .hero .date{margin-left:auto; font-size:12.5px; color:var(--sub); background:var(--card);
+    border:1px solid var(--edge); padding:9px 15px; border-radius:12px; font-weight:600; white-space:nowrap}
 
   /* ============================================================ metric cards */
-  .cards{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px}
-  .metric{position:relative; cursor:pointer; background:linear-gradient(180deg,var(--card),var(--card2));
-    border:1px solid var(--edge); border-radius:var(--radius); padding:20px;
-    display:flex; flex-direction:column; gap:6px; box-shadow:var(--shadow);
-    transition:transform .22s ease, border-color .22s ease, box-shadow .22s ease;
+  .cards{display:grid; gap:22px; margin-bottom:8px}
+  @media(min-width:1180px){.cards{grid-template-columns:repeat(3,1fr)}}
+  @media(min-width:720px) and (max-width:1179.98px){.cards{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:719.98px){.cards{grid-template-columns:1fr}}
+  .metric{position:relative; cursor:pointer; min-height:250px; padding:24px;
+    background:linear-gradient(145deg,#151E31 0%,#101827 100%);
+    border:1px solid rgba(80,110,170,.25); border-top:2px solid var(--acc,#3B82F6); border-radius:20px;
+    display:flex; flex-direction:column; gap:8px;
+    box-shadow:0 10px 30px rgba(0,0,0,.20), 0 0 25px color-mix(in srgb, var(--acc,#3B82F6) 14%, transparent);
+    transition:transform .25s ease, box-shadow .25s ease, border-color .25s ease;
     overflow:hidden}
-  .metric::before{content:""; position:absolute; inset:0 0 auto 0; height:2.5px;
-    background:var(--acc,var(--blue)); opacity:.9}
-  .metric .glow{position:absolute; inset:0; background:radial-gradient(600px 120px at 20% -20%, var(--acc,var(--blue)), transparent 55%);
-    opacity:0; transition:opacity .3s; pointer-events:none}
-  .metric:hover{transform:translateY(-4px); border-color:var(--acc,var(--blue))}
-  .metric:hover .glow{opacity:.14}
-  .metric:hover .arrow{transform:translateX(4px)}
+  .metric::before{content:""; position:absolute; inset:0; pointer-events:none; opacity:.55;
+    background:radial-gradient(520px 150px at 15% -15%, color-mix(in srgb, var(--acc,#3B82F6) 20%, transparent), transparent 60%)}
+  .metric .glow{position:absolute; inset:0; pointer-events:none; opacity:0; transition:opacity .3s;
+    background:radial-gradient(600px 170px at 25% 0, var(--acc,#3B82F6), transparent 60%)}
+  .metric:hover{transform:translateY(-5px);
+    border-color:color-mix(in srgb, var(--acc,#3B82F6) 55%, transparent);
+    box-shadow:0 18px 40px rgba(0,0,0,.30), 0 0 35px color-mix(in srgb, var(--acc,#3B82F6) 26%, transparent)}
+  .metric:hover .glow{opacity:.10}
   .metric .m-top{display:flex; align-items:center; justify-content:space-between}
-  .metric .m-title{font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:var(--muted)}
-  .metric .m-ico{width:38px; height:38px; border-radius:11px; display:grid; place-items:center;
-    background:color-mix(in srgb, var(--acc,var(--blue)) 20%, transparent); color:var(--acc,var(--blue))}
-  .metric .m-ico svg{width:20px; height:20px}
-  .metric .m-val{font-size:34px; font-weight:800; letter-spacing:-1px; line-height:1}
-  .metric .m-sub{font-size:12.5px; color:var(--muted)}
-  .metric .m-trend{display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:700}
-  .metric .m-trend.up{color:var(--green)}
-  .metric .m-trend.down{color:var(--red)}
-  .metric .m-trend.flat{color:var(--muted)}
-  .metric .foot{margin-top:auto; display:flex; align-items:center; gap:8px; padding-top:14px; border-top:1px solid var(--edge2)}
-  .metric .arrow{font-size:14px; color:var(--acc,var(--blue)); margin-left:auto; transition:transform .22s; font-weight:700}
-  .metric .hint{font-size:10.5px; color:var(--muted); flex:1}
-  .upload-cta{font-size:11px; font-weight:700; color:#bcd0ff; background:#0c1730;
-    border:1px dashed #365193; border-radius:9px; padding:6px 10px; cursor:pointer; transition:.18s}
-  .upload-cta:hover{background:#10203f; border-color:var(--blue); color:#fff}
-  .mini-status{display:flex; gap:10px; margin-top:2px; font-size:10.5px; color:var(--muted)}
-  .mini-status .s{display:inline-flex; align-items:center; gap:4px}
+  .metric .m-ico{width:48px; height:48px; border-radius:14px; flex:none; display:grid; place-items:center;
+    background:color-mix(in srgb, var(--acc,#3B82F6) 15%, transparent); color:var(--acc,#3B82F6);
+    box-shadow:0 0 18px color-mix(in srgb, var(--acc,#3B82F6) 12%, transparent)}
+  .metric .m-ico svg{width:24px; height:24px}
+  .metric .m-arr{width:34px; height:34px; border-radius:50%; flex:none; display:grid; place-items:center;
+    border:1px solid var(--edge); color:var(--acc,#3B82F6); transition:.22s}
+  .metric .m-arr svg{width:15px; height:15px}
+  .metric:hover .m-arr{border-color:color-mix(in srgb, var(--acc,#3B82F6) 60%, transparent);
+    background:color-mix(in srgb, var(--acc,#3B82F6) 10%, transparent)}
+  .metric:hover .m-arr svg{transform:translateX(2px)}
+  .metric .m-title{font-size:15px; font-weight:600; color:var(--txt2); margin-top:8px; letter-spacing:.1px}
+  .metric .m-val{font-size:44px; font-weight:700; letter-spacing:-1.2px; line-height:1.05; color:#F8FAFC; margin-top:2px}
+  .metric .m-sub{font-size:13px; color:var(--sub)}
+  .metric .m-trend{margin-top:6px; display:flex; flex-direction:column; gap:3px; line-height:1.1}
+  .metric .m-trend .t1{font-weight:800; font-size:15px; letter-spacing:.2px}
+  .metric .m-trend .t1.up{color:var(--green2)}
+  .metric .m-trend .t1.down{color:var(--red)}
+  .metric .m-trend .t1.warn{color:#FB923C}
+  .metric .m-trend .t1.flat{color:var(--sub)}
+  .metric .m-trend .t2{font-size:11.5px; color:var(--muted); font-weight:500}
+  .metric .foot{margin-top:auto; padding-top:14px; border-top:1px solid var(--edge2); display:flex; align-items:center}
+  .metric .hint{font-size:10.5px; color:var(--muted)}
+  .upload-cta{display:flex; align-items:center; gap:10px; width:100%; text-align:left; cursor:pointer; color:inherit;
+    background:color-mix(in srgb, var(--acc,#3B82F6) 10%, transparent);
+    border:1px solid color-mix(in srgb, var(--acc,#3B82F6) 35%, transparent);
+    border-radius:12px; padding:9px 12px; transition:.2s; font-family:inherit}
+  .upload-cta:hover{background:color-mix(in srgb, var(--acc,#3B82F6) 19%, transparent);
+    border-color:color-mix(in srgb, var(--acc,#3B82F6) 60%, transparent)}
+  .upload-cta .u-ic{width:30px; height:30px; border-radius:9px; flex:none; display:grid; place-items:center;
+    background:color-mix(in srgb, var(--acc,#3B82F6) 22%, transparent); color:var(--acc,#3B82F6)}
+  .upload-cta .u-ic svg{width:15px; height:15px}
+  .upload-cta .u-txt{display:flex; flex-direction:column; gap:1px; min-width:0}
+  .upload-cta .u-main{font-size:12.5px; font-weight:700; color:#E6EDFA}
+  .upload-cta .u-help{font-size:10.5px; color:var(--muted)}
+  .mini-status{display:flex; gap:12px; margin-top:8px; font-size:10.5px; color:#8FA0B8}
+  .mini-status .s{display:inline-flex; align-items:center; gap:5px}
   .mini-status .d{width:6px;height:6px;border-radius:50%}
-  .d.green{background:var(--green)} .d.amber{background:var(--warn,var(--yellow))} .d.red{background:var(--red)}
+  .d.green{background:var(--green)} .d.amber{background:var(--warn)} .d.red{background:var(--red)}
 
   /* ============================================================ AI banner */
-  .ai-banner{margin-top:18px; display:flex; align-items:center; gap:16px; padding:16px 20px;
-    border-radius:var(--radius); background:linear-gradient(90deg, rgba(251,191,36,.14), var(--card) 55%);
-    border:1px solid rgba(251,191,36,.35); box-shadow:var(--shadow); position:relative; overflow:hidden}
-  .ai-banner::after{content:""; position:absolute; inset:0; background:radial-gradient(400px 90px at 10% 0, rgba(251,191,36,.22), transparent 60%); pointer-events:none}
-  .ai-banner .bulb{width:46px;height:46px;flex:none;border-radius:12px;display:grid;place-items:center;
-    background:rgba(251,191,36,.16); color:var(--yellow); box-shadow:0 0 22px rgba(251,191,36,.35)}
+  .ai-banner{margin-top:26px; display:flex; align-items:center; gap:16px; padding:18px 22px;
+    border-radius:18px; background:linear-gradient(90deg, rgba(250,204,21,.10), rgba(20,28,45,.90) 60%);
+    border:1px solid rgba(250,204,21,.25); box-shadow:0 10px 30px rgba(0,0,0,.20); position:relative; overflow:hidden}
+  .ai-banner::after{content:""; position:absolute; inset:0; pointer-events:none; background:radial-gradient(420px 100px at 8% 0, rgba(250,204,21,.14), transparent 60%)}
+  .ai-banner .bulb{width:46px;height:46px;flex:none;border-radius:14px;display:grid;place-items:center;
+    background:rgba(250,204,21,.12); color:var(--gold); box-shadow:0 0 20px rgba(250,204,21,.22)}
   .ai-banner .bulb svg{width:24px;height:24px}
-  .ai-banner .tag{font-size:10px; font-weight:800; letter-spacing:1.6px; color:var(--yellow); text-transform:uppercase}
-  .ai-banner .msg{font-size:14.5px; font-weight:600; line-height:1.4}
+  .ai-banner .tag{font-size:10px; font-weight:800; letter-spacing:1.8px; color:var(--gold); text-transform:uppercase}
+  .ai-banner .msg{font-size:14.5px; font-weight:600; line-height:1.4; color:var(--txt)}
   .ai-banner .none{color:var(--muted); font-weight:500}
-  .dashboard-hint{text-align:center; color:var(--muted); font-size:12px; margin-top:16px}
+  .dashboard-hint{display:flex; align-items:center; justify-content:center; gap:8px; text-align:center;
+    color:#8F9BB0; font-size:14px; margin-top:22px}
+  .dashboard-hint svg{width:15px; height:15px; flex:none}
 
   /* ============================================================ analytics pages */
   .analytics-header{display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:16px}
@@ -243,7 +272,8 @@
   @media(max-width:720px){
     aside{position:absolute; left:0; top:0; bottom:0; box-shadow:var(--shadow)}
     aside.collapsed{margin-left:-240px}
-    .cards{grid-template-columns:1fr}
+    .content{padding:22px}
+    .hero h2{font-size:28px}
   }
 </style>
 </head>
@@ -354,6 +384,33 @@ const CUR=()=>SNAP||null;
 const E=id=>document.getElementById(id);
 function setTxt(id,v){const x=E(id);if(x)x.textContent=v==null||v===''?'—':v;}
 
+// ----------------------------------------------------------- flicker-free live updates
+// views are fully re-built only when the data source changes (live<->idle, run id);
+// otherwise charts/heatmaps are patched in place so nothing blinks on each snapshot.
+let built={}, lastApply={};
+const LIVE_MS={dashboard:2500,occupancy:3000,queue:3000,shelf:3500,dwell:3000,suggestions:4500,reports:6000,settings:10000};
+const viewSig=()=>`${SNAP?'live':'idle'}|${RUNS[0]?RUNS[0].id:'none'}`;
+function pick(v,ms){const n=Date.now();if(n-(lastApply[v]||0)>=ms){lastApply[v]=n;return true;}return false;}
+function liveApply(v){
+  if(!pick(v,LIVE_MS[v]||3000))return;
+  const s=viewSig();
+  if(built[v]!==s){built[v]=s;render(v);}
+  else if(PATCHES[v])PATCHES[v]();
+  else render(v);
+}
+const PATCHES={
+  dashboard:patchDashboard, occupancy:patchOccupancy, queue:patchQueue,
+  shelf:patchShelf, dwell:patchDwell, suggestions:null, reports:null, settings:null
+};
+function setTrend(sel,tr){
+  const el=document.querySelector(sel); if(!el)return;
+  const t1=el.querySelector('.t1'), t2=el.querySelector('.t2'); if(!t1)return;
+  el.classList.toggle('hidden',!tr);
+  if(tr){t1.textContent=tr.txt;t1.className='t1 '+tr.dir;if(t2)t2.textContent=tr.at||'';}
+}
+function setBy(sel,v){const el=document.querySelector(sel);if(el)el.textContent=v;}
+function upChart(id,fn){const ch=charts[id];if(ch&&fn)fn(ch);}
+
 // ---------------------------------------------------------------- sidebar nav
 const NAV=[
   {id:'dashboard',label:'Dashboard',icon:'M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10'},
@@ -401,7 +458,7 @@ function showView(name){
     settings:['Settings','System configuration and privacy'],
   }[name]||['Dashboard',''];
   $('pageTitle').textContent=meta[0]; $('pageSub').textContent=meta[1];
-  render(name);
+  built[name]=viewSig(); render(name);
 }
 window.addEventListener('popstate',()=>{const h=location.hash.replace('#/','');if(h)showView(h);});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&location.hash.startsWith('#/'))showView('dashboard');});
@@ -419,37 +476,44 @@ function render(name){
 }
 
 // ================================================================ DASHBOARD
-function renderDashboard(){
+function dashCompute(){
   const c=CUR(); const live=!!c;
   const f=c?.footfall||{}, q=c?.queues||{}, r=c?.reid||{}, d=c?.dwell||{}, sh=c?.shelves||[];
-  const al=c?.alerts?.active||[], sev=c?.alerts?.by_severity||{};
+  const al=c?.alerts?.active||[]; const sev=c?.alerts?.by_severity||{};
   const sm=!live&&RUNS[0]?RUNS[0].summary:null;
   const today=new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
-  // trend placeholders use real current vs persisted summary when available
-  const trend=(cur,prev)=>{if(num(cur)==null)return null;if(num(prev)==null)return {dir:'flat',txt:'—'};
-    if(prev===0)return{dir:cur>0?'up':'flat',txt:''};const p=Math.round((cur-prev)/prev*100);
-    return{dir:p>=0?'up':'down',txt:`${p>=0?'↑':'↓'} ${Math.abs(p)}% vs saved`};};
+  const trend=(cur,prev,warnUp)=>{if(num(cur)==null||num(prev)==null)return null;
+    if(prev===0)return{dir:cur>0?(warnUp?'warn':'up'):'flat',txt:cur>0?'↑ new':'—',at:'vs. last analysis'};
+    const p=Math.round((cur-prev)/prev*100); const up=p>0;
+    const dir=p===0?'flat':up?(warnUp?'warn':'up'):'down';
+    return{dir,txt:`${up?'↑':'↓'} ${Math.abs(p)}%`,at:'vs. last analysis'};};
 
   const occ=num(f.occupancy)??num(sm?.occupancy);
   const occTrend=trend(occ,sm?sm.occupancy:null);
   const uni=num(r.unique_shoppers??f.unique_shoppers)??num(sm?.unique_shoppers);
+  const uniTrend=trend(uni,sm?sm.unique_shoppers:null);
   const queueTotal=num(q.total)??num(sm?.queue_total);
+  const queueTrend=trend(queueTotal,sm?sm.queue_total:null,true);
   const dwAvg=live?dAvg(d?.avg_dwell_s):num(sm?.avg_dwell_s);
-  const shelfOut=(sh.filter(x=>['OUT','OUT_OF_STOCK'].includes(x.status)).length)
-    +(sm?sm.shelf_out:0);
+  const dwellTrend=trend(dwAvg,sm?sm.avg_dwell_s:null);
+  const dwTxt=dwAvg!=null?(function(s){if(s<60)return Math.round(s)+'s';return (s/60).toFixed(1)+' min';})(dwAvg):'—';
+  const shelfOut=(sh.filter(x=>['OUT','OUT_OF_STOCK'].includes(x.status)).length)+(sm?sm.shelf_out:0);
   const shelfLow=(sh.filter(x=>['LOW','LOW_STOCK'].includes(x.status)).length)+(sm?sm.shelf_low:0);
   const shelfTotal=(sh.length)||(sm?sm.shelf_total:0);
   const shelfHealth=shelfTotal?Math.max(0,100-Math.round((shelfOut+shelfLow)/shelfTotal*100)):null;
   const aiCount=(al.length)+(REC?1:0);
-
-  const uploadBtn=(kind,label)=>`<button class="upload-cta" data-upload="${kind}">${label}</button>`;
-
+  return {live,f,q,r,d,sh,al,sev,sm,today,trend,
+    occ,occTrend,uni,uniTrend,queueTotal,queueTrend,dwAvg,dwellTrend,dwTxt,
+    shelfOut,shelfLow,shelfTotal,shelfHealth,aiCount,rec:REC};
+}
+function renderDashboard(){
+  const {occ,occTrend,uni,uniTrend,queueTotal,queueTrend,dwTxt,dwellTrend,shelfHealth,shelfOut,shelfLow,shelfTotal,aiCount,live,rec,today}=dashCompute();
   $('view-dashboard').innerHTML=`
     <div class="hero">
       <div>
         <h2>Welcome back!</h2>
-        <p>Real-time insights for a smarter retail experience.</p>
+        <p>Here's what's happening in your store today.</p>
       </div>
       <div class="date">${today}</div>
     </div>
@@ -457,68 +521,74 @@ function renderDashboard(){
     <div class="cards">
       ${card('Occupancy','occupancy','#3B82F6',
         'M16 11a4 4 0 10-8 0 4 4 0 008 0zM2 21c0-4 4-6 8-6s8 2 8 6',
-        occ!==null?occ:'—','People currently in store',occTrend,uploadBtn('entry_exit','Upload Entry/Exit Video'))}
+        occ!==null?occ:'—','People currently in store',occTrend,uploadBtn('entry_exit','Upload Entry/Exit Video','Analyze store entry and exit'))}
 
       ${card('Unique Shoppers','occupancy','#8B5CF6',
         'M16 11a4 4 0 10-8 0 4 4 0 008 0zM2 21c0-4 4-6 8-6s8 2 8 6',
-        uni!==null?uni:'—','Unique visitors detected',null,null)}
+        uni!==null?uni:'—','Unique visitors detected',uniTrend,null,'uniques')}
 
-      ${card('Queue Now','queue','#F97316',
+      ${card('Queue Now','queue','#F59E0B',
         'M3 7h7v14H3zM14 3h7v18h-7z',
-        queueTotal!==null?queueTotal+' person'+(queueTotal===1?'':'s'):'—','Customers currently waiting',null,
-        uploadBtn('counter','Upload Counter Video'))}
+        queueTotal!==null?queueTotal+' person'+(queueTotal===1?'':'s'):'—','Customers currently waiting',queueTrend,
+        uploadBtn('counter','Upload Counter Video','Analyze queue at checkout'))}
 
-      ${card('Average Dwell Time','dwell','#8B5CF6',
+      ${card('Dwell Time','dwell','#2DD4BF',
         'M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
-        dwAvg!=null?fmtSec(dwAvg):'—','Average customer visit duration',null,null)}
+        dwTxt,'Average customer visit duration',dwellTrend,null)}
 
       ${shelfCard(shelfHealth,shelfOut,shelfLow,shelfTotal)}
 
-      ${card('AI Suggestions','suggestions','#FBBF24',
+      ${card('AI Suggestions','suggestions','#6366F1',
         'M9 18h6M10 21h4M12 3a6 6 0 00-4 10c.7.7 1 1.5 1 2h6c0-.5.3-1.3 1-2a6 6 0 00-4-10z',
-        live?aiCount:'—','New actionable insights',null,null)}
+        live?aiCount:'—','New insights',null,null)}
     </div>
 
     <div class="ai-banner">
       <div class="bulb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10c.7.7 1 1.5 1 2h6c0-.5.3-1.3 1-2a6 6 0 00-4-10z"/></svg></div>
       <div style="flex:1">
         <div class="tag">AI Suggestion</div>
-        <div class="msg ${REC?'':'none'}">${REC?esc(REC.text||'Recommendation available.'):'No recommendations available yet.'}</div>
+        <div class="msg ${rec?'':'none'}" id="aiMsg">${rec?esc(rec.text||'Recommendation available.'):'No recommendations available yet.'}</div>
       </div>
     </div>
-    <div class="dashboard-hint">Click any metric card to explore detailed analytics</div>
+    <div class="dashboard-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l7.5 18 2.5-8 8-2.5zM12 12l6-6"/></svg>Click any metric card to view detailed analytics</div>
   `;
   bindCardClicks();
 }
-function card(title,target,acc,icon,val,sub,trend,upload){
-  return `<div class="metric" data-card="${target}" style="--acc:${acc}">
+const uploadBtn=(kind,main,help)=>`<button class="upload-cta" data-upload="${kind}">
+    <span class="u-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg></span>
+    <span class="u-txt"><span class="u-main">${main}</span><span class="u-help">${help}</span></span>
+  </button>`;
+function card(title,target,acc,icon,val,sub,trend,upload,dkey){
+  return `<div class="metric" data-card="${target}" data-patch="${dkey||target}" style="--acc:${acc}">
     <div class="glow"></div>
     <div class="m-top">
-      <span class="m-title">${title}</span>
       <span class="m-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${icon}"/></svg></span>
+      <span class="m-arr" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16m-7-7l7 7-7 7"/></svg></span>
     </div>
+    <div class="m-title">${title}</div>
     <div class="m-val">${val}</div>
     <div class="m-sub">${sub}</div>
-    ${trend?`<div class="m-trend ${trend.dir}">${esc(trend.txt)}</div>`:''}
-    <div class="foot">${upload?`<span style="flex:1">${upload}</span>`:'<span class="hint">&nbsp;</span>'}<span class="arrow">→</span></div>
+    <div class="m-trend${trend?'':' hidden'}"><span class="t1 ${trend?trend.dir:'flat'}">${trend?esc(trend.txt):'—'}</span><span class="t2">${trend?esc(trend.at||''):'vs. last analysis'}</span></div>
+    <div class="foot">${upload||'<span class="hint">&nbsp;</span>'}</div>
   </div>`;
 }
 function shelfCard(health,out,low,total){
   const val=health!=null?health+'%':'—';
-  return `<div class="metric" data-card="shelf" style="--acc:#14B8A6">
+  return `<div class="metric" data-card="shelf" style="--acc:#EC4899">
     <div class="glow"></div>
     <div class="m-top">
-      <span class="m-title">Shelf Health</span>
       <span class="m-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h16a1 1 0 011 1v4H3V4a1 1 0 011-1zM3 10h7v11H4a1 1 0 01-1-1zM14 10h7v10a1 1 0 01-1 1h-6z"/></svg></span>
+      <span class="m-arr" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16m-7-7l7 7-7 7"/></svg></span>
     </div>
+    <div class="m-title">Shelf Status</div>
     <div class="m-val">${val}</div>
-    <div class="m-sub">Products currently in stock</div>
+    <div class="m-sub">Items in stock</div>
     <div class="mini-status">
       <span class="s"><span class="d green"></span>In Stock</span>
-      <span class="s"><span class="d amber"></span>Low</span>
-      <span class="s"><span class="d red"></span>Out</span>
+      <span class="s"><span class="d amber"></span>Low Stock</span>
+      <span class="s"><span class="d red"></span>Out of Stock</span>
     </div>
-    <div class="foot"><button class="upload-cta" data-upload="shelf">Upload Shelf Video</button><span class="arrow">→</span></div>
+    <div class="foot">${uploadBtn('shelf','Upload Shelf Video','Analyze shelf inventory')}</div>
   </div>`;
 }
 function bindCardClicks(){
@@ -531,6 +601,109 @@ function bindCardClicks(){
   document.querySelectorAll('.upload-cta').forEach(b=>{
     b.addEventListener('click',e=>{e.stopPropagation();openUpload(b.dataset.upload);});
   });
+}
+
+// ---- in-place patches (no DOM/canvas rebuild) so live updates never flicker
+function patchDashboard(){
+  const d=dashCompute();
+  setBy('.metric[data-patch="occupancy"] .m-val', d.occ!=null?d.occ:'—');
+  setBy('.metric[data-patch="occupancy"] .m-sub','People currently in store');
+  setTrend('.metric[data-patch="occupancy"] .m-trend', d.occTrend);
+  setBy('.metric[data-patch="uniques"] .m-val', d.uni!=null?d.uni:'—');
+  setBy('.metric[data-patch="uniques"] .m-sub','Unique visitors detected');
+  setTrend('.metric[data-patch="uniques"] .m-trend', d.uniTrend);
+  setBy('.metric[data-patch="queue"] .m-val', d.queueTotal!=null?d.queueTotal+' person'+(d.queueTotal===1?'':'s'):'—');
+  setBy('.metric[data-patch="queue"] .m-sub','Customers currently waiting');
+  setTrend('.metric[data-patch="queue"] .m-trend', d.queueTrend);
+  setBy('.metric[data-patch="dwell"] .m-val', d.dwTxt);
+  setBy('.metric[data-patch="dwell"] .m-sub','Average customer visit duration');
+  setTrend('.metric[data-patch="dwell"] .m-trend', d.dwellTrend);
+  setBy('.metric[data-patch="shelf"] .m-val', d.shelfHealth!=null?d.shelfHealth+'%':'—');
+  setBy('.metric[data-patch="shelf"] .m-sub','Items in stock');
+  setBy('.metric[data-patch="suggestions"] .m-val', d.live?d.aiCount:'—');
+  setBy('.metric[data-patch="suggestions"] .m-sub','New insights');
+  const ab=$('aiMsg'); if(ab){ab.textContent=d.rec?d.rec.text||'Recommendation available.':'No recommendations available yet.';ab.className='msg'+(d.rec?'':' none');}
+}
+function patchOccupancy(){
+  const c=CUR(), m=HIST.minutes||[], h=HIST.hourly||[];
+  const occ=c?.footfall, peak=Math.max(0,...m.map(x=>x.peak_occupancy));
+  const st=$('occ-stats');
+  if(st)st.innerHTML=
+    statCard('Current Occupancy',c?num(occ?.occupancy)??'—':'—','#3B82F6')+
+    statCard('Total Entries Today',c?num(occ?.total_entries)??0:'—','#34D399')+
+    statCard('Total Exits Today',c?num(occ?.total_exits)??0:'—','#F87171')+
+    statCard('Peak Occupancy',m.length?peak:'—','#8B5CF6');
+  if(m.length){
+    const L=m.map(x=>fmtTime(x.ts));
+    upChart('occChart',ch=>{ch.data.labels=L;ch.data.datasets[0].data=m.map(x=>x.avg_occupancy);
+      ch.data.datasets[1].data=m.map(x=>x.entries);ch.data.datasets[2].data=m.map(x=>x.exits);ch.update('none');});
+    upChart('occHour',ch=>{ch.data.labels=h.map(x=>fmtTime(x.ts));ch.data.datasets[0].data=h.map(x=>x.entries);ch.update('none');});
+    upChart('occBar',ch=>{ch.data.labels=h.map(x=>fmtTime(x.ts));ch.data.datasets[0].data=h.map(x=>x.entries);
+      ch.data.datasets[1].data=h.map(x=>x.exits);ch.update('none');});
+    upChart('occPeak',ch=>{const pk=(HIST.peak_hours||[]).slice(0,8);
+      ch.data.labels=pk.map(x=>x.hour+':00');ch.data.datasets[0].data=pk.map(x=>x.avg_footfall);ch.update('none');});
+  }
+  bindHeat('occHeatImg');
+}
+function patchQueue(){
+  const c=CUR(), m=HIST.minutes||[]; const q=c?.queues||{}; const p=q.predictions||{};
+  const meas=q.measured_wait_minutes||{}; const mv=Object.values(meas).filter(x=>x&&x.count);
+  const wait=waitText(q); const nowNum=num(q.total)??0;
+  const st=$('queue-stats');
+  if(st)st.innerHTML=
+    statCard('Current Queue',c?(num(q.total)??'—'):'—','#F59E0B')+
+    statCard('Average Wait Time',wait,'#F59E0B')+
+    statCard('Peak Queue Today',m.length?Math.max(0,...m.map(x=>x.peak_queue)):'—','#FBBF24');
+  const pq=$('queuePer'); if(pq)pq.innerHTML=perCheckout(q,meas);
+  if(c)upChart('predChart',ch=>{const p5=p['5min']??p['predicted_queue_length_5min'],p10=p['10min']??p['predicted_queue_length_10min'];
+    ch.data.datasets[0].data=[nowNum,p5,p10].map(x=>x==null?null:(+x).toFixed(1));ch.update('none');});
+  if(m.length)upChart('queueChart',ch=>{ch.data.labels=m.map(x=>fmtTime(x.ts));
+    ch.data.datasets[0].data=m.map(x=>x.avg_queue);ch.data.datasets[1].data=m.map(x=>x.peak_queue);ch.update('none');});
+  if(E('waitChart'))bindWaitChart(q,meas,mv);
+}
+function patchShelf(){
+  const c=CUR(); const sh=c?.shelves||[];
+  const outS=sh.filter(x=>['OUT','OUT_OF_STOCK'].includes(x.status));
+  const lowS=sh.filter(x=>['LOW','LOW_STOCK'].includes(x.status));
+  const fullS=sh.filter(x=>x.status==='FULL');
+  const health=sh.length?Math.max(0,100-Math.round((outS.length+lowS.length)/sh.length*100)):null;
+  const st=$('shelf-stats');
+  if(st)st.innerHTML=
+    statCard('Shelf Health',health!=null?health+'%':'—','#EC4899')+
+    statCard('In Stock',c?fullS.length:'—','#34D399')+
+    statCard('Low Stock',c?lowS.length:'—','#FBBF24')+
+    statCard('Out of Stock',c?outS.length:'—','#F87171');
+  if(sh.length)upChart('shelfBar',ch=>{ch.data.labels=sh.map(s=>s.shelf_id||s.id);
+    ch.data.datasets[0].data=sh.map(s=>s.status==='FULL'?1:0);
+    ch.data.datasets[1].data=sh.map(s=>['LOW','LOW_STOCK'].includes(s.status)?1:0);
+    ch.data.datasets[2].data=sh.map(s=>['OUT','OUT_OF_STOCK'].includes(s.status)?1:0);ch.update('none');});
+  const tb=$('shelfTable'); if(tb)tb.innerHTML=sh.map(s=>`<tr><td>${esc(s.shelf_id||s.id)}</td><td>${badge(s.status)}</td><td>${badge(s.source)}</td><td>${s.confirmed?'✓':'pending'}</td><td>${typeof s.stock_out_risk==='number'?Math.round(s.stock_out_risk*100)+'%':'—'}</td></tr>`).join('');
+  const ready=c?.planogram?.status&&c.planogram.status!=='MODEL_NOT_AVAILABLE';
+  const pb=$('planogramBox'); if(pb&&sh.length)pb.innerHTML=`
+      <div style="display:flex;align-items:center;gap:14px;height:100%;justify-content:center">
+        <div style="text-align:center"><div style="font-size:34px;font-weight:800;color:${ready?'#34D399':'#FBBF24'}">${ready?'READY':'N/A'}</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:6px">${c?.planogram?.product_model?'Product detector loaded':c?.planogram?.status==='MODEL_NOT_AVAILABLE'?'No product detector available':c?.planogram?.status||'—'}</div></div>
+      </div>`;
+  const lb=$('shelfLowBox'); if(lb)lb.innerHTML=([...lowS,...outS].length)?
+    ([...lowS,...outS].map(s=>`<div class="rec-card" style="border-left-color:${['OUT','OUT_OF_STOCK'].includes(s.status)?'#F87171':'#FBBF24'}">
+      <div class="r-top"><span class="pill-pr ${['OUT','OUT_OF_STOCK'].includes(s.status)?'high':'medium'}">${['OUT','OUT_OF_STOCK'].includes(s.status)?'OUT OF STOCK':'LOW STOCK'}</span><span class="cat">${esc(s.shelf_id||s.id)}</span></div>
+      <div class="r-text">Recommendation: ${['OUT','OUT_OF_STOCK'].includes(s.status)?'Restock immediately.':'Restock soon.'}</div>
+    </div>`).join('')):
+    '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M9 11l3 3 9-9"/></svg><p>All shelves are in stock.</p></div>';
+  bindHeat('shelfFrameImg');
+}
+function patchDwell(){
+  const c=CUR(); const d=c?.dwell||{}; const av=d.avg_dwell_s||{}, oz=d.occupancy||{};
+  const st=$('dwell-stats');
+  if(st)st.innerHTML=
+    statCard('Average Dwell Time',c?fmtSec(dAvg(av)):'—','#2DD4BF')+
+    statCard('Peak Dwell Time',c?fmtSec(Math.max(0,...Object.values(av).map(Math.round))):'—','#EC4899')+
+    statCard('Zones Tracked',c?Object.keys(av).length:'—','#2DD4BF');
+  if(c&&Object.keys(av).length){
+    upChart('dwellChart',ch=>{ch.data.labels=Object.keys(av);ch.data.datasets[0].data=Object.values(av).map(Math.round);ch.update('none');});
+    upChart('dwellOcc',ch=>{ch.data.labels=Object.keys(oz);ch.data.datasets[0].data=Object.values(oz);ch.update('none');});
+  }
+  bindHeat('dwellHeatImg');
 }
 
 // ================================================================ OCCUPANCY
@@ -546,7 +719,7 @@ function renderOccupancy(){
       </div>
       <div class="actions"><button class="btn ghost" data-upload="entry_exit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Upload Entry/Exit Video</button></div>
     </div>
-    <div class="stats">
+    <div class="stats" id="occ-stats">
       ${statCard('Current Occupancy',c?num(occ?.occupancy)??'—':'—','#3B82F6')}
       ${statCard('Total Entries Today',c?num(occ?.total_entries)??0:'—','#34D399')}
       ${statCard('Total Exits Today',c?num(occ?.total_exits)??0:'—','#F87171')}
@@ -606,9 +779,9 @@ function renderQueue(){
       </div>
       <div class="actions"><button class="btn ghost" data-upload="counter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Upload Counter Video</button></div>
     </div>
-    <div class="stats">
-      ${statCard('Current Queue',num(q.total)??'—','#F97316')}
-      ${statCard('Average Wait Time',wait,'#F97316')}
+    <div class="stats" id="queue-stats">
+      ${statCard('Current Queue',num(q.total)??'—','#F59E0B')}
+      ${statCard('Average Wait Time',wait,'#F59E0B')}
       ${statCard('Peak Queue Today',m.length?Math.max(0,...m.map(x=>x.peak_queue)):'—','#FBBF24')}
     </div>
     <div class="tabs" data-tabs="queue">
@@ -637,13 +810,13 @@ function renderQueue(){
     const now=num(q.total)??0, p5=p['5min']??p['predicted_queue_length_5min'], p10=p['10min']??p['predicted_queue_length_10min'];
     const iv=p.interval_10min||{};
     chart('predChart',{type:'bar',data:{labels:['now','5 min','10 min'],datasets:[
-      {label:'queue length',data:[now,p5,p10].map(x=>x==null?null:+x.toFixed?+x.toFixed(1):x),backgroundColor:['#8F9AB3','#3B82F6','#F97316']},
+      {label:'queue length',data:[now,p5,p10].map(x=>x==null?null:+x.toFixed?+x.toFixed(1):x),backgroundColor:['#8F9AB3','#3B82F6','#F59E0B']},
       ...(iv.high!=null?[{type:'line',label:'80% CI (10m)',data:[null,null,iv.high],borderColor:'#F87171',borderDash:[5,4],pointRadius:0},
         {type:'line',label:'80% CI low',data:[null,null,iv.low],borderColor:'#F87171',borderDash:[5,4],pointRadius:0}]:[])]},options:{...baseOpts}});
   }
   if(m.length){
     chart('queueChart',{type:'line',data:{labels:m.map(x=>fmtTime(x.ts)),datasets:[
-      {label:'avg queue',data:m.map(x=>x.avg_queue),borderColor:'#F97316',tension:.3,pointRadius:0,fill:true,backgroundColor:'rgba(249,115,22,.12)'},
+      {label:'avg queue',data:m.map(x=>x.avg_queue),borderColor:'#F59E0B',tension:.3,pointRadius:0,fill:true,backgroundColor:'rgba(245,158,11,.12)'},
       {label:'peak queue',data:m.map(x=>x.peak_queue),borderColor:'#FBBF24',tension:.3,pointRadius:0}]},options:{...baseOpts}});
   }
 }
@@ -661,10 +834,15 @@ function bindWaitChart(q,meas,mv){
   const el=E('waitChart'); if(!el)return;
   const w=Object.entries(q.wait_minutes||{}).filter(([,v])=>num(v)!=null);
   if(!w.length&&!mv.length){E('waitList').innerHTML='<div class="empty">Select a checkout zone to see wait estimates.</div>';return;}
-  chart('waitChart',{type:'bar',data:{labels:w.map(([k])=>k),datasets:[
-    {label:'est (rule)',data:w.map(([,v])=>v),backgroundColor:'#3B82F6'},
-    {label:'measured avg',data:w.map(([k])=>{const x=meas[k];return x&&x.count?x.avg_wait_minutes:null;}),backgroundColor:'#F97316'}]},options:{...baseOpts}});
   const mm=Object.entries(meas).filter(([,v])=>v&&v.count);
+  const labels=w.map(([k])=>k);
+  const cfg={type:'bar',data:{labels,datasets:[
+    {label:'est (rule)',data:w.map(([,v])=>v),backgroundColor:'#3B82F6'},
+    {label:'measured avg',data:w.map(([k])=>{const x=meas[k];return x&&x.count?x.avg_wait_minutes:null;}),backgroundColor:'#F59E0B'}]},options:{...baseOpts}};
+  const prev=charts.waitChart;
+  if(prev&&prev.canvas&&E('waitChart')&&prev.canvas.parentNode===el.parentNode&&el.parentNode.contains(prev.canvas)){
+    prev.data=cfg.data; prev.update('none');
+  }else{chart('waitChart',cfg);}
   E('waitList').innerHTML=mm.length?
     '<table><thead><tr><th>Checkout</th><th>Measured avg</th><th>Max</th></tr></thead><tbody>'+
     mm.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${Number(v.avg_wait_minutes).toFixed(1)} min</td><td>${Number(v.max_wait_minutes).toFixed(1)} min</td></tr>`).join('')+'</tbody></table>':
@@ -689,8 +867,8 @@ function renderShelf(){
       </div>
       <div class="actions"><button class="btn ghost" data-upload="shelf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Upload Shelf Video</button></div>
     </div>
-    <div class="stats">
-      ${statCard('Shelf Health',health!=null?health+'%':'—','#14B8A6')}
+    <div class="stats" id="shelf-stats">
+      ${statCard('Shelf Health',health!=null?health+'%':'—','#EC4899')}
       ${statCard('In Stock',fullS.length||'—','#34D399')}
       ${statCard('Low Stock',lowS.length||'—','#FBBF24')}
       ${statCard('Out of Stock',outS.length||'—','#F87171')}
@@ -706,7 +884,7 @@ function renderShelf(){
         <div class="panel"><h3>Planogram model</h3><div class="chart-hold" id="planogramBox"></div></div>
       </div>
       <div class="panel"><h3>Shelf status board</h3>
-        <table><thead><tr><th>Shelf</th><th>Status</th><th>Source</th><th>Confirmed</th><th>Stock-out risk</th></tr></thead><tbody>
+        <table><thead><tr><th>Shelf</th><th>Status</th><th>Source</th><th>Confirmed</th><th>Stock-out risk</th></tr></thead><tbody id="shelfTable">
         ${sh.map(s=>`<tr><td>${esc(s.shelf_id||s.id)}</td><td>${badge(s.status)}</td><td>${badge(s.source)}</td><td>${s.confirmed?'✓':'pending'}</td><td>${typeof s.stock_out_risk==='number'?Math.round(s.stock_out_risk*100)+'%':'—'}</td></tr>`).join('')}
         </tbody></table></div>
         `:emptyState('No shelf data yet','Upload a Shelf video to begin inventory monitoring.<br><br><button class="btn solid" data-upload="shelf">Upload Video</button>')}
@@ -718,10 +896,12 @@ function renderShelf(){
     </div>
     <div id="shelf-low" class="tab-pane">
       ${(lowS.length||outS.length)?`<div class="panel"><h3>Needs attention</h3>
+        <div id="shelfLowBox">
         ${[...lowS,...outS].map(s=>`<div class="rec-card" style="border-left-color:${['OUT','OUT_OF_STOCK'].includes(s.status)?'#F87171':'#FBBF24'}">
           <div class="r-top"><span class="pill-pr ${['OUT','OUT_OF_STOCK'].includes(s.status)?'high':'medium'}">${['OUT','OUT_OF_STOCK'].includes(s.status)?'OUT OF STOCK':'LOW STOCK'}</span><span class="cat">${esc(s.shelf_id||s.id)}</span></div>
           <div class="r-text">Recommendation: ${['OUT','OUT_OF_STOCK'].includes(s.status)?'Restock immediately.':'Restock soon.'}</div>
-        </div>`).join('')}</div>`:
+        </div>`).join('')}</div>
+        </div>`:
         emptyState('All shelves in stock','No low-stock or out-of-stock items detected.')}
     </div>
   `;
@@ -753,10 +933,10 @@ function renderDwell(){
       </div>
       <div class="actions"><button class="btn ghost" data-upload="entry_exit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Upload Entry/Exit Video</button></div>
     </div>
-    <div class="stats">
-      ${statCard('Average Dwell Time',fmtSec(dAvg(av)),'#8B5CF6')}
+    <div class="stats" id="dwell-stats">
+      ${statCard('Average Dwell Time',fmtSec(dAvg(av)),'#2DD4BF')}
       ${statCard('Peak Dwell Time',fmtSec(Math.max(0,...Object.values(av).map(Math.round))),'#EC4899')}
-      ${statCard('Zones Tracked',Object.keys(av).length||'—','#14B8A6')}
+      ${statCard('Zones Tracked',Object.keys(av).length||'—','#2DD4BF')}
     </div>
     ${Object.keys(av).length?`<div class="grid2">
       <div class="panel"><h3>Avg dwell per zone</h3><div class="chart-hold"><canvas id="dwellChart"></canvas></div></div>
@@ -767,8 +947,8 @@ function renderDwell(){
   `;
   bindCommon(); bindHeat('dwellHeatImg');
   if(Object.keys(av).length){
-    chart('dwellChart',{type:'bar',data:{labels:Object.keys(av),datasets:[{label:'avg dwell (s)',data:Object.values(av).map(Math.round),backgroundColor:'#8B5CF6'}]},options:{...baseOpts}});
-    chart('dwellOcc',{type:'bar',data:{labels:Object.keys(oz),datasets:[{label:'occupants now',data:Object.values(oz),backgroundColor:'#14B8A6'}]},options:{...baseOpts}});
+    chart('dwellChart',{type:'bar',data:{labels:Object.keys(av),datasets:[{label:'avg dwell (s)',data:Object.values(av).map(Math.round),backgroundColor:'#2DD4BF'}]},options:{...baseOpts}});
+    chart('dwellOcc',{type:'bar',data:{labels:Object.keys(oz),datasets:[{label:'occupants now',data:Object.values(oz),backgroundColor:'#2DD4BF'}]},options:{...baseOpts}});
   }
 }
 
@@ -899,10 +1079,16 @@ function bindCommon(){
   document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',()=>showView('dashboard')));
   document.querySelectorAll('[data-upload]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openUpload(b.dataset.upload);}));
 }
+let heatCache={};
 function bindHeat(id){
   const img=E(id); if(!img)return;
-  if(SNAP)img.src='/api/heatmap.png?v='+Date.now();
-  else if(RUNS[0])img.src=`/api/runs/${RUNS[0].id}/heatmap.png?v=${Date.now()}`;
+  let base=null;
+  if(SNAP)base='/api/heatmap.png';
+  else if(RUNS[0])base=`/api/runs/${RUNS[0].id}/heatmap.png`;
+  if(!base)return;
+  const now=Date.now(), hc=heatCache[id]||{};
+  if(hc.base!==base){img.src=base+'?v='+now;heatCache[id]={base,t:now};return;}
+  if(now-(hc.t||0)>=15000){img.src=base+'?v='+now;heatCache[id]={base,t:now};}
 }
 function emptyState(title,sub,withBtn=true){
   return `<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12h6M8 6h8M4 3h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4a1 1 0 011-1z"/></svg>
@@ -917,7 +1103,7 @@ function openUpload(kind){
   const k=KINDS[kind]||KINDS.entry_exit;
   $('upTitle').textContent=k.title; $('upDesc').textContent=k.desc;
   $('upIco').innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V7m0 0l-5 5m5-5l5 5M5 3h14"/></svg>`;
-  $('upIco').style.cssText=`--acc:${KINDS[kind].kind==='counter'?'#F97316':kind==='shelf'?'#14B8A6':'#3B82F6'}`;
+  $('upIco').style.cssText=`--acc:${KINDS[kind].kind==='counter'?'#F59E0B':kind==='shelf'?'#EC4899':'#3B82F6'}`;
   $('upBody').innerHTML=`
     <div class="drop" id="dropZone">
       <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg></div>
@@ -944,7 +1130,7 @@ function openUpload(kind){
 function selectFile(file){
   const sz=file.size?Math.round(file.size/1024/1024*10)/10+' MB':'';
   E('fileRow').innerHTML=`<div class="file-row">
-    <svg viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2" style="width:22px;height:22px;flex:none"><path d="M7 3h7l5 5v13H7z"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" style="width:22px;height:22px;flex:none"><path d="M7 3h7l5 5v13H7z"/></svg>
     <span class="n">${esc(file.name)}</span><span class="sz">${sz}</span></div>`;
   E('analyzeBtn').disabled=false;
 }
@@ -1005,17 +1191,17 @@ async function refreshStatus(){
 }
 async function refreshRec(){
   try{const r=await fetch('/api/analytics/recommendation');const j=await r.json();REC=j.recommendation;}catch(e){REC=null;}
-  if(currentView==='dashboard')renderDashboard();
+  if(currentView==='dashboard')liveApply('dashboard');
 }
 async function refreshRuns(){
   try{const r=await fetch('/api/runs');const j=await r.json();RUNS=j.runs||[];}
   catch(e){RUNS=[];}
-  if(currentView==='dashboard')renderDashboard();
+  if(currentView==='dashboard')liveApply('dashboard');
 }
 async function refreshHistory(){
   try{
     const r=await fetch('/api/analytics/history');const j=await r.json();
-    if(j.live){HIST=j; if(['occupancy','queue','reports'].includes(currentView))render(currentView);}
+    if(j.live){HIST=j; if(['occupancy','queue','reports'].includes(currentView))liveApply(currentView);}
   }catch(e){}
 }
 async function refreshConfig(){
@@ -1033,7 +1219,7 @@ function connect(){
       if(msg.type==='live_snapshot'){
         const cam=Object.values(msg.data||{})[0];
         if(cam){SNAP=cam;
-          if(['dashboard','occupancy','queue','shelf','dwell','suggestions'].includes(currentView))render(currentView);
+          if(['dashboard','occupancy','queue','shelf','dwell','suggestions'].includes(currentView))liveApply(currentView);
         }
       }
     }catch(e){}
