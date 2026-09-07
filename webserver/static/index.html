@@ -360,7 +360,7 @@ const KINDS={
   counter:{title:'Upload Counter Video',desc:'Analyze checkout queue',kind:'counter'},
   shelf:{title:'Upload Shelf Video',desc:'Analyze shelf inventory',kind:'shelf'}
 };
-let SNAP=null, HIST={minutes:[],hourly:[],daily:[],peak_hours:[],activity:{}}, RUNS=[], REC=null, CFG=null;
+let SNAP=null, LAST=null, LAST_ID=null, HIST={minutes:[],hourly:[],daily:[],peak_hours:[],activity:{}}, RUNS=[], REC=null, CFG=null;
 let charts={}, currentView='dashboard', sidebarOpen=true;
 
 // ---------------------------------------------------------------- helpers
@@ -380,7 +380,7 @@ const baseOpts={responsive:true,maintainAspectRatio:false,animation:false,intera
   y:{beginAtZero:true,ticks:{color:'#8F9AB3',font:{size:10}},grid:{color:'#1A2749'}}},
   plugins:{legend:{labels:{color:'#8F9AB3',boxWidth:12,font:{size:10}}}}};
 
-const CUR=()=>SNAP||null;
+const CUR=()=>SNAP||LAST;
 const E=id=>document.getElementById(id);
 function setTxt(id,v){const x=E(id);if(x)x.textContent=v==null||v===''?'—':v;}
 
@@ -389,7 +389,7 @@ function setTxt(id,v){const x=E(id);if(x)x.textContent=v==null||v===''?'—':v;}
 // otherwise charts/heatmaps are patched in place so nothing blinks on each snapshot.
 let built={}, lastApply={};
 const LIVE_MS={dashboard:2500,occupancy:3000,queue:3000,shelf:3500,dwell:3000,suggestions:4500,reports:6000,settings:10000};
-const viewSig=()=>`${SNAP?'live':'idle'}|${RUNS[0]?RUNS[0].id:'none'}`;
+const viewSig=()=>`${SNAP?'live':'idle'}|${RUNS[0]?RUNS[0].id:'none'}|${SNAP?'':(LAST_ID||'')}`;
 function pick(v,ms){const n=Date.now();if(n-(lastApply[v]||0)>=ms){lastApply[v]=n;return true;}return false;}
 function liveApply(v){
   if(!pick(v,LIVE_MS[v]||3000))return;
@@ -1082,9 +1082,10 @@ function bindCommon(){
 let heatCache={};
 function bindHeat(id){
   const img=E(id); if(!img)return;
+  const isShelf=id==='shelfFrameImg';
   let base=null;
-  if(SNAP)base='/api/heatmap.png';
-  else if(RUNS[0])base=`/api/runs/${RUNS[0].id}/heatmap.png`;
+  if(SNAP)base=isShelf?'/video_stream':'/api/heatmap.png';
+  else if(RUNS[0])base=isShelf?`/api/runs/${RUNS[0].id}/frame.jpg`:`/api/runs/${RUNS[0].id}/heatmap.png`;
   if(!base)return;
   const now=Date.now(), hc=heatCache[id]||{};
   if(hc.base!==base){img.src=base+'?v='+now;heatCache[id]={base,t:now};return;}
@@ -1197,7 +1198,12 @@ async function refreshRec(){
 async function refreshRuns(){
   try{const r=await fetch('/api/runs');const j=await r.json();RUNS=j.runs||[];}
   catch(e){RUNS=[];}
-  if(currentView==='dashboard')liveApply('dashboard');
+  if(RUNS[0]&&!SNAP&&RUNS[0].id!==LAST_ID){
+    try{const r=await fetch('/api/runs/'+RUNS[0].id);const d=await r.json();
+      if(d&&d.current){LAST=d.current;LAST_ID=RUNS[0].id;}else{LAST=null;LAST_ID=null;}}
+    catch(e){LAST=null;LAST_ID=null;}
+  }
+  if(['dashboard','occupancy','queue','shelf','dwell','suggestions','reports'].includes(currentView))liveApply(currentView);
 }
 async function refreshHistory(){
   try{
