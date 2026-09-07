@@ -3,708 +3,1054 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Retail Intelligence — SIH 2026 Dashboard</title>
+<title>Retail Intelligence · SIH 2026</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root{
-    --bg:#080d1c; --bg2:#0c1328; --panel:#111a33; --panel2:#182444;
-    --edge:#24345f; --edge2:#1a2749; --txt:#e8edff; --muted:#8fa0c8;
-    --accent:#4c8dff; --accent2:#7faeff; --good:#34d399; --warn:#fbbf24; --bad:#f87171;
-    --radius:16px; --shadow:0 10px 30px rgba(0,0,0,.35);
+    --bg:#080D1B; --sidebar:#0B1222; --card:#111A2D; --card2:#0E1626;
+    --edge:#243252; --edge2:#1A2749; --txt:#E8EDF7; --muted:#8F9AB3;
+    --blue:#3B82F6; --purple:#8B5CF6; --orange:#F97316; --teal:#14B8A6;
+    --green:#34D399; --red:#F87171; --yellow:#FBBF24; --cyan:#22D3EE; --pink:#EC4899;
+    --radius:16px; --shadow:0 12px 34px rgba(0,0,0,.45); --glow:0 0 24px rgba(59,130,246,.25);
   }
   *{box-sizing:border-box; margin:0; padding:0}
   html,body{height:100%}
   body{background:
-      radial-gradient(1200px 500px at 80% -10%, rgba(76,141,255,.18), transparent 60%),
-      radial-gradient(900px 500px at 0% 110%, rgba(52,211,153,.10), transparent 55%),
+      radial-gradient(1100px 520px at 85% -10%, rgba(59,130,246,.16), transparent 60%),
+      radial-gradient(900px 480px at -5% 110%, rgba(139,92,246,.10), transparent 55%),
       var(--bg);
-    color:var(--txt); font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
-    min-height:100vh; padding-bottom:40px}
+    color:var(--txt); font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;
+    overflow:hidden; -webkit-font-smoothing:antialiased}
   button{font-family:inherit}
-  /* ---------------------------------------------------------------- header */
-  header{position:sticky; top:0; z-index:30; display:flex; align-items:center; gap:12px;
-    padding:10px 18px; background:rgba(8,13,28,.82); backdrop-filter:blur(10px);
-    border-bottom:1px solid var(--edge2)}
-  header .logo{font-size:16px; font-weight:800; letter-spacing:.4px}
-  header .logo span{color:var(--accent2)}
-  header .actions{margin-left:auto; display:flex; align-items:center; gap:8px}
-  .pill{font-size:11px; padding:4px 11px; border-radius:20px; border:1px solid var(--edge);
-    background:var(--panel2); color:var(--muted); white-space:nowrap}
-  .pill.live{color:var(--good); border-color:#1b6b4f; background:#0f2419}
-  .pill.off{color:var(--muted)}
-  .btn{border:none; border-radius:10px; padding:9px 15px; font-size:13px; font-weight:700;
-    cursor:pointer; transition:.15s}
-  .btn.demo{background:linear-gradient(135deg,var(--accent),#3d7ae0); color:#fff}
-  .btn.demo:hover{filter:brightness(1.1)}
-  .btn.stop{background:#2a1220; color:var(--bad); border:1px solid #7f1d2b}
-  .btn:disabled{opacity:.5; cursor:not-allowed}
-  /* ------------------------------------------------------------- container */
-  main{max-width:1280px; margin:0 auto; padding:18px; display:flex; flex-direction:column; gap:16px}
-  .status-line{font-size:12px; color:var(--muted)}
-  .status-line.err{color:var(--bad)}
-  /* ---------------------------------------------------------- recommendation */
-  .rec-bar{display:flex; align-items:center; gap:14px; padding:14px 18px; border-radius:var(--radius);
-    background:linear-gradient(90deg,#142a5e,#111a33 60%); border:1px solid var(--edge);
-    box-shadow:var(--shadow)}
-  .rec-bar .tag{font-size:10px; font-weight:800; letter-spacing:1.5px; color:var(--accent2);
-    text-transform:uppercase; flex:none; line-height:1.3}
-  .rec-bar .msg{font-size:15px; font-weight:600; flex:1; line-height:1.4}
-  .rec-bar .msg.warn{color:var(--warn)} .rec-bar .msg.ok{color:var(--good)}
-  .rec-bar .src{margin-left:auto; flex:none; text-align:right}
-  .badge{display:inline-block; padding:3px 9px; border-radius:20px; font-size:10px; font-weight:700}
-  .badge.FULL{background:#0f2419; color:var(--good)}
-  .badge.LOW,.badge.LOW_STOCK{background:#2c2110; color:var(--warn)}
-  .badge.OUT,.badge.OUT_OF_STOCK{background:#2a1220; color:var(--bad)}
-  .badge.OK{background:#0f2419; color:var(--good)}
-  .badge.NORMAL{background:#0f2419; color:var(--good)}
-  .badge.INFO{background:var(--panel2); color:var(--muted)}
-  .badge.WARNING{background:#2c2110; color:var(--warn)}
-  .badge.HIGH{background:#2a1220; color:var(--bad)}
-  .badge.ONLINE{background:#0f2419; color:var(--good)}
-  .badge.OFFLINE,.badge.ERROR{background:#2a1220; color:var(--bad)}
-  .badge.RECONNECTING{background:#2c2110; color:var(--warn)}
-  .badge.model{background:#0f2419; color:var(--good); border:1px solid #1b6b4f}
-  .badge.blend{background:#0f2242; color:#7fb2ff; border:1px solid #2a5fa0}
-  .badge.fallback{background:#2c2110; color:var(--warn); border:1px solid #7a5d1a}
-  .badge.MODEL_NOT_AVAILABLE{background:#2c2110; color:var(--warn)}
-  .badge.dim{background:var(--panel2); color:var(--muted)}
-  /* ----------------------------------------------------------------- cards */
-  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(255px,1fr)); gap:16px}
-  .metric{position:relative; display:flex; flex-direction:column; gap:8px;
-    background:linear-gradient(180deg,var(--panel),var(--bg2)); border:1px solid var(--edge);
-    border-radius:var(--radius); padding:18px 18px 14px; box-shadow:var(--shadow);
-    cursor:pointer; transition:.18s; overflow:hidden}
-  .metric:hover{transform:translateY(-3px); border-color:#3a5590; box-shadow:0 16px 40px rgba(0,0,0,.5)}
-  .metric::before{content:""; position:absolute; inset:0 0 auto 0; height:3px;
-    background:linear-gradient(90deg,var(--accent),#34d399); opacity:.5}
-  .metric .top{display:flex; align-items:center; justify-content:space-between; font-size:11px;
-    font-weight:700; letter-spacing:1.2px; color:var(--muted); text-transform:uppercase}
-  .metric .top .ico{font-size:16px}
-  .metric .value{font-size:34px; font-weight:800; line-height:1; letter-spacing:-.5px}
-  .metric .value.good{color:var(--good)} .metric .value.warn{color:var(--warn)} .metric .value.bad{color:var(--bad)}
-  .metric .sub{font-size:12px; color:var(--muted)}
-  .metric .foot{display:flex; align-items:center; gap:8px; margin-top:auto; padding-top:8px;
-    border-top:1px solid var(--edge2)}
-  .metric .foot .go{margin-left:auto; font-size:11px; color:var(--accent2); font-weight:700}
-  .upload-btn{font-size:11px; font-weight:700; border:1px dashed #3a5590; color:#bcd0ff;
-    background:#0c1730; border-radius:9px; padding:6px 10px; cursor:pointer; transition:.15s}
-  .upload-btn:hover{border-color:var(--accent); color:var(--accent2); background:#10203f}
-  /* ------------------------------------------------------------- detail views */
-  .view-head{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
-  .view-head h2{font-size:20px; font-weight:800}
-  .view-head .back{font-family:inherit; padding:8px 14px; border-radius:10px; background:var(--panel2);
-    border:1px solid var(--edge); color:var(--txt); cursor:pointer; font-size:13px; font-weight:600}
-  .view-head .runpick{margin-left:auto; display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted)}
-  .view-head select{background:var(--panel2); color:var(--txt); border:1px solid var(--edge);
-    border-radius:9px; padding:7px 9px; font-size:12px}
-  .grid2{display:grid; grid-template-columns:1.6fr 1fr; gap:16px}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:var(--edge2);border-radius:8px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  /* ============================================================ layout shell */
+  .shell{display:flex; height:100vh; width:100vw}
+  main{flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden}
+
+  /* sidebar */
+  aside{width:240px; flex:none; background:var(--sidebar); border-right:1px solid var(--edge2);
+    display:flex; flex-direction:column; padding:18px 14px; gap:4px;
+    transition:margin-left .28s ease, width .28s ease; z-index:40}
+  aside.collapsed{margin-left:-240px}
+  .brand{display:flex; align-items:center; gap:11px; padding:4px 6px 16px; border-bottom:1px solid var(--edge2); margin-bottom:12px}
+  .brand .logo{width:38px; height:38px; border-radius:11px; flex:none;
+    background:linear-gradient(135deg,var(--blue),var(--purple));
+    display:grid; place-items:center; box-shadow:0 4px 14px rgba(59,130,246,.4)}
+  .brand .logo svg{width:20px; height:20px; color:#fff}
+  .brand .nm{font-size:14px; font-weight:800; letter-spacing:.2px; line-height:1.1}
+  .brand .st{font-size:10px; color:var(--muted); font-weight:600; letter-spacing:1.6px}
+  nav{display:flex; flex-direction:column; gap:2px; overflow:auto; flex:1}
+  .nav-item{display:flex; align-items:center; gap:11px; padding:9px 11px; border-radius:10px;
+    color:var(--muted); font-size:13.5px; font-weight:600; cursor:pointer; border:1px solid transparent;
+    transition:.2s; user-select:none}
+  .nav-item svg{width:17px; height:17px; flex:none; opacity:.85}
+  .nav-item:hover{color:var(--txt); background:rgba(59,130,246,.08)}
+  .nav-item.active{color:#fff; background:linear-gradient(90deg,rgba(59,130,246,.22),rgba(59,130,246,.06));
+    border-color:rgba(59,130,246,.28)}
+  .nav-item.active svg{color:var(--blue)}
+  .nav-sep{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1.4px;
+    padding:16px 11px 6px; font-weight:700; opacity:.7}
+  .sys{flex:none; margin-top:10px; padding:11px; border:1px solid var(--edge2); border-radius:12px;
+    background:var(--card2)}
+  .sys .row{display:flex; align-items:center; gap:8px; font-size:12px; font-weight:700}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 8px var(--green);
+    animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  .sys .sub{color:var(--muted); font-size:10.5px; margin-top:4px; padding-left:16px}
+  .user{display:flex; align-items:center; gap:9px; padding:10px 6px 0; margin-top:8px; border-top:1px solid var(--edge2)}
+  .avatar{width:30px; height:30px; border-radius:50%; background:linear-gradient(135deg,#F97316,#EC4899);
+    display:grid; place-items:center; font-size:12px; font-weight:800; color:#fff}
+  .user .nm{font-size:12.5px; font-weight:700}
+  .user .em{font-size:10px; color:var(--muted)}
+
+  /* topbar */
+  .topbar{flex:none; display:flex; align-items:center; gap:14px; padding:13px 22px;
+    background:rgba(8,13,27,.6); backdrop-filter:blur(10px); border-bottom:1px solid var(--edge2)}
+  .hamburger{background:none; border:none; color:var(--muted); cursor:pointer; padding:4px}
+  .hamburger svg{width:22px; height:22px}
+  .topbar h1{font-size:17px; font-weight:800}
+  .topbar .crumb{font-size:12px; color:var(--muted); font-weight:600}
+  .top-actions{margin-left:auto; display:flex; align-items:center; gap:10px}
+  .conn{font-size:11px; padding:4px 11px; border-radius:20px; border:1px solid var(--edge);
+    background:var(--card); color:var(--muted); white-space:nowrap}
+  .conn.live{color:var(--green); border-color:#1d6a4e; background:#0f2419}
+  .conn.off{color:var(--muted)}
+  .btn{border:none; border-radius:10px; padding:9px 15px; font-size:13px; font-weight:700; cursor:pointer;
+    transition:.18s; display:inline-flex; align-items:center; gap:8px}
+  .btn svg{width:15px; height:15px}
+  .btn.solid{background:linear-gradient(135deg,var(--blue),#2563eb); color:#fff}
+  .btn.solid:hover{filter:brightness(1.08)}
+  .btn.ghost{background:var(--card); color:var(--muted); border:1px solid var(--edge)}
+  .btn.ghost:hover{color:var(--txt); border-color:#365193}
+
+  /* ============================================================ content */
+  .content{flex:1; overflow:auto; padding:22px}
+  .view{display:none; animation:fade .28s ease}
+  .view.active{display:block}
+  @keyframes fade{from{opacity:0; transform:translateY(6px)}to{opacity:1; transform:none}}
+  .hidden{display:none!important}
+
+  /* welcome row */
+  .hero{display:flex; align-items:flex-end; gap:14px; margin-bottom:18px; flex-wrap:wrap}
+  .hero h2{font-size:24px; font-weight:800; letter-spacing:-.3px}
+  .hero p{color:var(--muted); font-size:13px; margin-top:3px}
+  .hero .date{margin-left:auto; font-size:12px; color:var(--muted); background:var(--card);
+    border:1px solid var(--edge); padding:8px 14px; border-radius:10px; font-weight:600}
+
+  /* ============================================================ metric cards */
+  .cards{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px}
+  .metric{position:relative; cursor:pointer; background:linear-gradient(180deg,var(--card),var(--card2));
+    border:1px solid var(--edge); border-radius:var(--radius); padding:20px;
+    display:flex; flex-direction:column; gap:6px; box-shadow:var(--shadow);
+    transition:transform .22s ease, border-color .22s ease, box-shadow .22s ease;
+    overflow:hidden}
+  .metric::before{content:""; position:absolute; inset:0 0 auto 0; height:2.5px;
+    background:var(--acc,var(--blue)); opacity:.9}
+  .metric .glow{position:absolute; inset:0; background:radial-gradient(600px 120px at 20% -20%, var(--acc,var(--blue)), transparent 55%);
+    opacity:0; transition:opacity .3s; pointer-events:none}
+  .metric:hover{transform:translateY(-4px); border-color:var(--acc,var(--blue))}
+  .metric:hover .glow{opacity:.14}
+  .metric:hover .arrow{transform:translateX(4px)}
+  .metric .m-top{display:flex; align-items:center; justify-content:space-between}
+  .metric .m-title{font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:var(--muted)}
+  .metric .m-ico{width:38px; height:38px; border-radius:11px; display:grid; place-items:center;
+    background:color-mix(in srgb, var(--acc,var(--blue)) 20%, transparent); color:var(--acc,var(--blue))}
+  .metric .m-ico svg{width:20px; height:20px}
+  .metric .m-val{font-size:34px; font-weight:800; letter-spacing:-1px; line-height:1}
+  .metric .m-sub{font-size:12.5px; color:var(--muted)}
+  .metric .m-trend{display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:700}
+  .metric .m-trend.up{color:var(--green)}
+  .metric .m-trend.down{color:var(--red)}
+  .metric .m-trend.flat{color:var(--muted)}
+  .metric .foot{margin-top:auto; display:flex; align-items:center; gap:8px; padding-top:14px; border-top:1px solid var(--edge2)}
+  .metric .arrow{font-size:14px; color:var(--acc,var(--blue)); margin-left:auto; transition:transform .22s; font-weight:700}
+  .metric .hint{font-size:10.5px; color:var(--muted); flex:1}
+  .upload-cta{font-size:11px; font-weight:700; color:#bcd0ff; background:#0c1730;
+    border:1px dashed #365193; border-radius:9px; padding:6px 10px; cursor:pointer; transition:.18s}
+  .upload-cta:hover{background:#10203f; border-color:var(--blue); color:#fff}
+  .mini-status{display:flex; gap:10px; margin-top:2px; font-size:10.5px; color:var(--muted)}
+  .mini-status .s{display:inline-flex; align-items:center; gap:4px}
+  .mini-status .d{width:6px;height:6px;border-radius:50%}
+  .d.green{background:var(--green)} .d.amber{background:var(--warn,var(--yellow))} .d.red{background:var(--red)}
+
+  /* ============================================================ AI banner */
+  .ai-banner{margin-top:18px; display:flex; align-items:center; gap:16px; padding:16px 20px;
+    border-radius:var(--radius); background:linear-gradient(90deg, rgba(251,191,36,.14), var(--card) 55%);
+    border:1px solid rgba(251,191,36,.35); box-shadow:var(--shadow); position:relative; overflow:hidden}
+  .ai-banner::after{content:""; position:absolute; inset:0; background:radial-gradient(400px 90px at 10% 0, rgba(251,191,36,.22), transparent 60%); pointer-events:none}
+  .ai-banner .bulb{width:46px;height:46px;flex:none;border-radius:12px;display:grid;place-items:center;
+    background:rgba(251,191,36,.16); color:var(--yellow); box-shadow:0 0 22px rgba(251,191,36,.35)}
+  .ai-banner .bulb svg{width:24px;height:24px}
+  .ai-banner .tag{font-size:10px; font-weight:800; letter-spacing:1.6px; color:var(--yellow); text-transform:uppercase}
+  .ai-banner .msg{font-size:14.5px; font-weight:600; line-height:1.4}
+  .ai-banner .none{color:var(--muted); font-weight:500}
+  .dashboard-hint{text-align:center; color:var(--muted); font-size:12px; margin-top:16px}
+
+  /* ============================================================ analytics pages */
+  .analytics-header{display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:16px}
+  .analytics-header .back{background:none; border:none; color:var(--muted); cursor:pointer; font-size:13px;
+    display:inline-flex; align-items:center; gap:6px; margin-top:3px; font-weight:600}
+  .analytics-header .back:hover{color:var(--txt)}
+  .analytics-header h2{font-size:21px; font-weight:800}
+  .analytics-header .sub{color:var(--muted); font-size:12.5px; margin-top:3px}
+  .analytics-header .actions{margin-left:auto; display:flex; gap:10px; align-items:center}
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:16px}
+  .stat{background:var(--card); border:1px solid var(--edge); border-radius:13px; padding:13px 15px}
+  .stat .k{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700}
+  .stat .v{font-size:22px; font-weight:800; margin-top:3px}
+  .tabs{display:inline-flex; gap:4px; background:var(--card); border:1px solid var(--edge); padding:4px; border-radius:11px; margin-bottom:14px}
+  .tab{padding:8px 16px; border-radius:8px; font-size:13px; font-weight:700; color:var(--muted); cursor:pointer;
+    border:none; background:none; transition:.18s}
+  .tab.active{background:linear-gradient(135deg,rgba(59,130,246,.25),rgba(59,130,246,.08)); color:#fff}
+  .tab-pane{display:none} .tab-pane.active{display:block; animation:fade .25s}
+  .panel{background:var(--card); border:1px solid var(--edge); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow); margin-bottom:16px}
+  .panel h3{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1.2px; font-weight:700; margin-bottom:10px}
+  .grid2{display:grid; grid-template-columns:1.5fr 1fr; gap:16px}
   .grid2b{display:grid; grid-template-columns:1fr 1fr; gap:16px}
-  @media (max-width:980px){.grid2,.grid2b{grid-template-columns:1fr}}
-  .card{background:var(--panel); border:1px solid var(--edge); border-radius:var(--radius);
-    padding:14px; box-shadow:var(--shadow)}
-  .card h3{color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase;
-    letter-spacing:1.2px; margin-bottom:8px}
-  .chart-hold{height:250px; position:relative}
-  .chart-hold.sm{height:180px}
-  table{width:100%; border-collapse:collapse; font-size:12px}
-  th{text-align:left; color:var(--muted); font-weight:700; padding:6px 8px; border-bottom:1px solid var(--edge)}
-  td{padding:6px 8px; border-bottom:1px solid var(--edge2)}
-  .imgbox img{width:100%; border-radius:10px; border:1px solid var(--edge); background:#000;
-    aspect-ratio:16/9; object-fit:contain}
-  .empty{color:var(--muted); font-size:12px; text-align:center; padding:20px}
-  .stat-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px}
-  .stat{background:var(--bg2); border:1px solid var(--edge2); border-radius:12px; padding:10px 12px}
-  .stat .k{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px}
-  .stat .v{font-size:20px; font-weight:800; margin-top:2px}
-  .stat .v.good{color:var(--good)} .stat .v.warn{color:var(--warn)}
-  .alert-item{display:flex; gap:8px; align-items:baseline; padding:7px 2px;
-    border-bottom:1px solid var(--edge2); font-size:12px}
-  .factors{display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end}
-  .factor{font-size:11px; background:var(--panel2); padding:3px 9px; border-radius:8px; color:var(--muted)}
-  .privacy{color:var(--muted); font-size:11px; text-align:center; margin:14px 0 6px}
-  #dropHint{position:fixed; inset:0; z-index:60; display:none; align-items:center; justify-content:center;
-    background:rgba(8,13,28,.85); backdrop-filter:blur(4px); font-size:18px; font-weight:700;
-    border:3px dashed var(--accent); color:var(--accent2); pointer-events:none}
-  #dropHint.on{display:flex}
+  @media(max-width:980px){.grid2,.grid2b{grid-template-columns:1fr}}
+  .chart-hold{height:260px; position:relative}
+  .chart-hold.sm{height:200px}
+  img.media{width:100%; border-radius:10px; border:1px solid var(--edge); background:#000; aspect-ratio:16/9; object-fit:contain}
+  table{width:100%; border-collapse:collapse; font-size:12.5px}
+  th{text-align:left; color:var(--muted); font-weight:700; padding:8px; border-bottom:1px solid var(--edge)}
+  td{padding:8px; border-bottom:1px solid var(--edge2)}
+  .badge{display:inline-block; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700}
+  .badge.FULL,.badge.IN_STOCK,.badge.OK,.badge.NORMAL,.badge.ONLINE{background:#0f2419;color:var(--green);border:1px solid #1d6a4e}
+  .badge.LOW,.badge.LOW_STOCK,.badge.WARNING,.badge.RECONNECTING,.badge.MEDIUM{background:#2c2110;color:var(--yellow);border:1px solid #7a5d1a}
+  .badge.OUT,.badge.OUT_OF_STOCK,.badge.HIGH,.badge.OFFLINE,.badge.ERROR{background:#2a1220;color:var(--red);border:1px solid #7f1d2b}
+  .badge.INFO,.badge.dim{background:var(--card2);color:var(--muted)}
+  .badge.blend{background:#0f2242;color:#7fb2ff;border:1px solid #2a5fa0}
+  .badge.model{background:#0f2419;color:var(--green);border:1px solid #1d6a4e}
+  .badge.fallback{background:#2c2110;color:var(--warn,var(--yellow));border:1px solid #7a5d1a}
+  .badge.OPPORTUNITY{background:#0f2242;color:#7fb2ff;border:1px solid #2a5fa0}
+  .pill-pr{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:800}
+  .pr.high{background:#2a1220;color:var(--red);border:1px solid #7f1d2b}
+  .pr.medium{background:#2c2110;color:var(--yellow);border:1px solid #7a5d1a}
+  .pr.opportunity{background:#0f2242;color:#7fb2ff;border:1px solid #2a5fa0}
+  .empty{padding:40px 20px; text-align:center; color:var(--muted)}
+  .empty svg{width:44px;height:44px;opacity:.4;margin-bottom:12px}
+  .empty .t{font-weight:700; color:var(--txt); font-size:14px; margin-bottom:4px}
+  .empty .s{font-size:12.5px}
+
+  /* ============================================================ upload modal */
+  .modal-overlay{position:fixed; inset:0; z-index:100; background:rgba(4,8,18,.7); backdrop-filter:blur(6px);
+    display:grid; place-items:center; padding:20px; animation:fade .2s}
+  .modal-overlay.hidden{display:none}
+  .modal{width:100%; max-width:520px; background:var(--card); border:1px solid var(--edge); border-radius:18px;
+    padding:24px; box-shadow:var(--shadow); animation:pop .24s ease; max-height:90vh; overflow:auto}
+  @keyframes pop{from{opacity:0; transform:scale(.96) translateY(8px)}to{opacity:1; transform:none}}
+  .modal .m-head{display:flex; align-items:center; gap:12px; margin-bottom:16px}
+  .modal .m-head .ico{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;color:var(--acc,var(--blue));
+    background:color-mix(in srgb, var(--acc,var(--blue)) 20%, transparent)}
+  .modal .m-head .ico svg{width:24px;height:24px}
+  .modal .m-head h3{font-size:17px; font-weight:800}
+  .modal .m-head p{color:var(--muted); font-size:12px; margin-top:2px}
+  .modal .close{margin-left:auto; background:none; border:none; color:var(--muted); cursor:pointer; font-size:20px; line-height:1}
+  .drop{border:2px dashed #365193; border-radius:14px; padding:30px 18px; text-align:center; cursor:pointer;
+    transition:.2s; background:var(--card2)}
+  .drop:hover,.drop.over{border-color:var(--blue); background:rgba(59,130,246,.06)}
+  .drop .ic{color:var(--blue); opacity:.85; margin-bottom:8px}
+  .drop .ic svg{width:34px;height:34px}
+  .drop .t{font-size:14px; font-weight:700}
+  .drop .s{font-size:12px; color:var(--muted); margin-top:4px}
+  .drop .fmt{margin-top:10px; font-size:10.5px; color:var(--muted); letter-spacing:.4px}
+  .file-row{display:flex; align-items:center; gap:10px; background:var(--card2); border:1px solid var(--edge);
+    border-radius:11px; padding:11px 13px; margin-top:14px}
+  .file-row .n{font-size:13px; font-weight:700; flex:1}
+  .file-row .sz{color:var(--muted); font-size:11.5px}
+  .modal .m-foot{margin-top:18px; display:flex; gap:10px; justify-content:flex-end}
+  .analyzing{text-align:center; padding:8px 0}
+  .analyzing .spin{width:38px;height:38px;border-radius:50%;border:3px solid var(--edge);border-top-color:var(--blue);
+    margin:0 auto 14px;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .analyzing .steps{display:flex;flex-direction:column;gap:6px;margin-top:14px;text-align:left;max-width:280px;margin-left:auto;margin-right:auto}
+  .analyzing .steps .st{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .analyzing .steps .st.done{color:var(--green)} .analyzing .steps .st.done svg{color:var(--green)}
+  .analyzing .steps .st.cur{color:var(--txt)}
+  .analyzing .steps svg{width:14px;height:14px}
+
+  /* suggestions */
+  .rec-card{border:1px solid var(--edge); border-radius:var(--radius); padding:16px; background:var(--card); margin-bottom:12px;
+    border-left:4px solid var(--pc,#8B5CF6)}
+  .rec-card .r-top{display:flex; align-items:center; gap:10px; margin-bottom:8px}
+  .rec-card .r-top .cat{font-weight:800; font-size:13px}
+  .rec-card .r-text{font-size:14px; color:var(--txt); line-height:1.45}
+  .rec-card .r-impact{font-size:12px; color:var(--muted); margin-top:8px}
+  .rec-card .r-impact b{color:var(--green)}
+  @media(max-width:720px){
+    aside{position:absolute; left:0; top:0; bottom:0; box-shadow:var(--shadow)}
+    aside.collapsed{margin-left:-240px}
+    .cards{grid-template-columns:1fr}
+  }
 </style>
 </head>
 <body>
-<header>
-  <div class="logo">Retail<span>Intelligence</span> · SIH 2026</div>
-  <div class="actions">
-    <div class="pill off" id="connPill">◦ connecting…</div>
-    <div class="pill" id="modePill">standby</div>
-    <button class="btn stop" id="stopBtn">Stop</button>
-    <button class="btn demo" id="demoBtn">Run demo</button>
+<div class="shell">
+  <!-- ======================================================== SIDEBAR -->
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M9 11h.01M15 11h.01M9 14h.01M15 14h.01"/></svg></div>
+      <div><div class="nm">Retail Intelligence</div><div class="st">SIH 2026</div></div>
+    </div>
+    <nav id="nav"></nav>
+    <div class="sys">
+      <div class="row"><span class="dot"></span>System Online</div>
+      <div class="sub" id="sysSub">Websocket connecting…</div>
+    </div>
+    <div class="user">
+      <div class="avatar">RS</div>
+      <div><div class="nm">Retail Store</div><div class="em" id="storeId">store_01</div></div>
+    </div>
+  </aside>
+
+  <!-- ======================================================== MAIN -->
+  <main>
+    <div class="topbar">
+      <button class="hamburger" id="hamburger" aria-label="Toggle sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <div>
+        <h1 id="pageTitle">Dashboard</h1>
+        <div class="crumb" id="pageSub">Real-time retail intelligence</div>
+      </div>
+      <div class="top-actions">
+        <div class="conn off" id="connPill">◦ connecting…</div>
+        <button class="btn solid" id="demoBtn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Run Demo</button>
+        <button class="btn ghost" id="stopBtn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>Stop</button>
+      </div>
+    </div>
+
+    <div class="content" id="content">
+      <!-- ==================================================== DASHBOARD -->
+      <section class="view active" id="view-dashboard"></section>
+
+      <!-- ==================================================== OCCUPANCY -->
+      <section class="view" id="view-occupancy"></section>
+
+      <!-- ==================================================== QUEUE -->
+      <section class="view" id="view-queue"></section>
+
+      <!-- ==================================================== SHELF -->
+      <section class="view" id="view-shelf"></section>
+
+      <!-- ==================================================== DWELL -->
+      <section class="view" id="view-dwell"></section>
+
+      <!-- ==================================================== SUGGESTIONS -->
+      <section class="view" id="view-suggestions"></section>
+
+      <!-- ==================================================== REPORTS -->
+      <section class="view" id="view-reports"></section>
+
+      <!-- ==================================================== SETTINGS -->
+      <section class="view" id="view-settings"></section>
+    </div>
+  </main>
+</div>
+
+<!-- upload modal -->
+<div class="modal-overlay hidden" id="uploadOverlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="upTitle">
+    <div class="m-head">
+      <div class="ico" id="upIco"></div>
+      <div><h3 id="upTitle">Upload Video</h3><p id="upDesc"></p></div>
+      <button class="close" data-close="1" aria-label="Close">&times;</button>
+    </div>
+    <div id="upBody"></div>
   </div>
-</header>
+</div>
 
-<main>
-  <!-- ============================================================ dashboard -->
-  <section data-view="dashboard">
-    <div class="status-line" id="statusLine">Ready — run the demo or upload a video (entry/exit, checkout counter, or shelf).</div>
-
-    <div class="rec-bar" id="recBar" style="margin-top:12px">
-      <div class="tag">AI<br/>Recommendation</div>
-      <div class="msg ok" id="recMsg">No recommendations available yet.</div>
-      <div class="src" id="recSrc"></div>
-    </div>
-
-    <div class="cards" style="margin-top:16px">
-      <div class="metric" data-click="occupancy">
-        <div class="top"><span>Occupancy</span><span class="ico">👥</span></div>
-        <div class="value" id="mOccupancy">—</div>
-        <div class="sub" id="mFootfall">entries / exits</div>
-        <div class="foot">
-          <button class="upload-btn" data-kind="entry_exit">Upload Entry/Exit video</button>
-          <span class="go">Analytics →</span>
-        </div>
-      </div>
-
-      <div class="metric" data-click="shoppers">
-        <div class="top"><span>Unique Shoppers</span><span class="ico">🛍️</span></div>
-        <div class="value" id="mUnique">—</div>
-        <div class="sub">anonymous count · no faces</div>
-        <div class="foot">
-          <button class="upload-btn" data-kind="entry_exit">Upload Entry/Exit video</button>
-          <span class="go">Shopper analytics →</span>
-        </div>
-      </div>
-
-      <div class="metric" data-click="queue">
-        <div class="top"><span>Queue Now</span><span class="ico">🧾</span></div>
-        <div class="value" id="mQueue">—</div>
-        <div class="sub" id="mWait">wait estimate</div>
-        <div class="foot">
-          <button class="upload-btn" data-kind="counter">Upload Counter video</button>
-          <span class="go">Queue analytics →</span>
-        </div>
-      </div>
-
-      <div class="metric" data-click="dwell">
-        <div class="top"><span>Dwell Time</span><span class="ico">⏱️</span></div>
-        <div class="value" id="mDwell">—</div>
-        <div class="sub" id="mDwellSub">avg time in-store</div>
-        <div class="foot">
-          <button class="upload-btn" data-kind="entry_exit">Upload Entry/Exit video</button>
-          <span class="go">Zone charts →</span>
-        </div>
-      </div>
-
-      <div class="metric" data-click="shelf">
-        <div class="top"><span>Shelf Status</span><span class="ico">📦</span></div>
-        <div class="value" id="mShelf">—</div>
-        <div class="sub" id="mShelfSub">shelves monitored</div>
-        <div class="foot">
-          <button class="upload-btn" data-kind="shelf">Upload Shelf video</button>
-          <span class="go">Shelf analytics →</span>
-        </div>
-      </div>
-
-      <div class="metric" data-click="ai">
-        <div class="top"><span>AI Suggestions</span><span class="ico">💡</span></div>
-        <div class="value" id="mAi">—</div>
-        <div class="sub" id="mAiSub">info · warning · high</div>
-        <div class="foot">
-          <span class="go" style="margin-left:0">Open suggestions →</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ======================================================== occupancy -->
-  <section data-view="occupancy" hidden>
-    <div class="view-head">
-      <button class="back" data-back>← Dashboard</button>
-      <h2>Occupancy analytics</h2>
-      <div class="runpick">Run <select data-kpick="entry_exit"></select></div>
-      <button class="upload-btn" data-kind="entry_exit">Upload Entry/Exit video</button>
-    </div>
-    <div class="stat-grid" style="margin-top:14px">
-      <div class="stat"><div class="k">Current occupancy</div><div class="v" id="sOcc">—</div></div>
-      <div class="stat"><div class="k">Total entries</div><div class="v" id="sIn">—</div></div>
-      <div class="stat"><div class="k">Total exits</div><div class="v" id="sOut">—</div></div>
-      <div class="stat"><div class="k">Peak occupancy</div><div class="v" id="sPeakOcc">—</div></div>
-    </div>
-    <div class="grid2" style="margin-top:16px">
-      <div class="card"><h3>Footfall &amp; occupancy</h3><div class="chart-hold"><canvas id="occChart"></canvas></div></div>
-      <div class="card"><h3>Hourly footfall</h3><div class="chart-hold"><canvas id="occHourChart"></canvas></div></div>
-    </div>
-    <div class="grid2b" style="margin-top:16px">
-      <div class="card"><h3>Movement heatmap</h3><div class="imgbox"><img id="occHeat" alt="movement heatmap" /></div></div>
-      <div class="card"><h3>Analytics frame</h3><div class="imgbox" id="occFrame"><img id="occVid" alt="analytics frame" /></div></div>
-    </div>
-  </section>
-
-  <!-- ======================================================== shoppers -->
-  <section data-view="shoppers" hidden>
-    <div class="view-head">
-      <button class="back" data-back>← Dashboard</button>
-      <h2>Shopper analytics (anonymous Re-ID)</h2>
-      <button class="upload-btn" data-kind="entry_exit">Upload Entry/Exit video</button>
-    </div>
-    <div class="stat-grid" style="margin-top:14px">
-      <div class="stat"><div class="k">Unique shopper count</div><div class="v" id="sUnique">—</div></div>
-      <div class="stat"><div class="k">Active identities</div><div class="v" id="sActive">—</div></div>
-      <div class="stat"><div class="k">Re-ID engine</div><div class="v" id="sReid">—</div></div>
-      <div class="stat"><div class="k">Privacy</div><div class="v good">AUDITED</div></div>
-    </div>
-    <div class="card" style="margin-top:16px"><h3>Unique shoppers in rolling window</h3>
-      <div class="chart-hold"><canvas id="uniqueChart"></canvas></div></div>
-    <p class="privacy">No face detection or biometrics — appearance embeddings are colour-hash histograms of the body crop only.</p>
-  </section>
-
-  <!-- ======================================================== queue -->
-  <section data-view="queue" hidden>
-    <div class="view-head">
-      <button class="back" data-back>← Dashboard</button>
-      <h2>Queue analytics</h2>
-      <div class="runpick">Run <select data-kpick="counter"></select></div>
-      <button class="upload-btn" data-kind="counter">Upload Counter video</button>
-    </div>
-    <div class="stat-grid" style="margin-top:14px">
-      <div class="stat"><div class="k">Queue now</div><div class="v" id="sQueue">—</div></div>
-      <div class="stat"><div class="k">Est. wait</div><div class="v" id="sWait">—</div></div>
-      <div class="stat"><div class="k">Measured avg wait</div><div class="v" id="sMeasWait">—</div></div>
-      <div class="stat"><div class="k">Predicted 10 min</div><div class="v" id="sPred10" style="display:flex;align-items:baseline;gap:8px">— </div></div>
-    </div>
-    <div class="grid2" style="margin-top:16px">
-      <div class="card"><h3>Queue length — history</h3><div class="chart-hold"><canvas id="queueChart"></canvas></div></div>
-      <div class="card"><h3>Per-checkout</h3><div class="chart-hold sm" style="overflow:auto" id="queueTable"></div></div>
-    </div>
-    <div class="grid2b" style="margin-top:16px">
-      <div class="card"><h3>5 &amp; 10 min forecast</h3><div class="chart-hold"><canvas id="predChart"></canvas></div></div>
-      <div class="card"><h3>Est vs measured wait (min)</h3><div class="chart-hold"><canvas id="waitChart"></canvas></div></div>
-    </div>
-  </section>
-
-  <!-- ======================================================== dwell -->
-  <section data-view="dwell" hidden>
-    <div class="view-head">
-      <button class="back" data-back>← Dashboard</button>
-      <h2>Dwell time analytics</h2>
-      <button class="upload-btn" data-kind="entry_exit">Upload Entry/Exit video</button>
-    </div>
-    <div class="stat-grid" style="margin-top:14px">
-      <div class="stat"><div class="k">Avg dwell</div><div class="v" id="sDwellAvg">—</div></div>
-      <div class="stat"><div class="k">Current dwell</div><div class="v" id="sDwellNow">—</div></div>
-      <div class="stat"><div class="k">Zones tracked</div><div class="v" id="sZones">—</div></div>
-    </div>
-    <div class="grid2b" style="margin-top:16px">
-      <div class="card"><h3>Avg dwell per zone</h3><div class="chart-hold"><canvas id="dwellChart"></canvas></div></div>
-      <div class="card"><h3>Current occupants per zone</h3><div class="chart-hold"><canvas id="dwellOccChart"></canvas></div></div>
-    </div>
-    <div class="card" style="margin-top:16px"><h3>Zone movement heatmap</h3>
-      <div class="imgbox"><img id="dwellHeat" alt="zone heatmap" style="max-height:340px" /></div></div>
-  </section>
-
-  <!-- ======================================================== shelf -->
-  <section data-view="shelf" hidden>
-    <div class="view-head">
-      <button class="back" data-back>← Dashboard</button>
-      <h2>Shelf &amp; inventory analytics</h2>
-      <div class="runpick">Run <select data-kpick="shelf"></select></div>
-      <button class="upload-btn" data-kind="shelf">Upload Shelf video</button>
-    </div>
-    <div class="stat-grid" style="margin-top:14px">
-      <div class="stat"><div class="k">Shelves monitored</div><div class="v" id="sShelves">—</div></div>
-      <div class="stat"><div class="k">Full / Low / Out</div><div class="v" id="sShelfCounts">—</div></div>
-      <div class="stat"><div class="k">Planogram model</div><div class="v" id="sPlanogram">—</div></div>
-    </div>
-    <div class="card" style="margin-top:16px"><h3>Shelf status board</h3>
-      <div style="overflow:auto"><table id="shelfTable"><thead>
-        <tr><th>Shelf</th><th>Status</th><th>Source</th><th>Confirmed</th><th>Stock-out risk</th><th>Est. time to out</th><th>Trend</th></tr>
-      </thead><tbody><tr><td colspan="7" class="empty">No shelf data yet — upload a shelf video.</td></tr></tbody></table></div>
-    </div>
-    <div class="grid2" style="margin-top:16px">
-      <div class="card"><h3>Shelf status breakdown</h3><div class="chart-hold"><canvas id="shelfBar"></canvas></div></div>
-      <div class="card"><h3>Analytics frame</h3><div class="imgbox" id="shelfFrame"><img id="shelfVid" alt="shelf analytics frame" /></div></div>
-    </div>
-  </section>
-
-  <!-- ======================================================== AI suggestions -->
-  <section data-view="ai" hidden>
-    <div class="view-head">
-      <button class="back" data-back>← Dashboard</button>
-      <h2>AI suggestions</h2>
-    </div>
-    <div class="rec-bar" style="margin-top:14px">
-      <div class="tag">AI<br/>Recommendation</div>
-      <div class="msg ok" id="aiRecMsg">No recommendations available yet.</div>
-      <div class="src" id="aiRecSrc"></div>
-    </div>
-    <div class="grid2" style="margin-top:16px">
-      <div class="card"><h3>Active alerts</h3><div id="aiAlerts"><div class="empty">No active alerts.</div></div></div>
-      <div class="card"><h3>Alert severity counts</h3><div id="aiAlertsOld"><div class="empty">—</div></div></div>
-    </div>
-  </section>
-</main>
-
-<div class="privacy">Privacy-first retail intelligence — anonymous track ids only, no facial recognition anywhere.</div>
-
-<input type="file" id="fileInput" accept="video/*,.mp4,.mov,.avi,.mkv,.webm,.m4v" style="display:none" />
-<div id="dropHint">Drop video to run analytics</div>
+<input type="file" id="fileInput" accept="video/*,.mp4,.mov,.avi,.mkv,.webm,.m4v" class="hidden" />
 
 <script>
 const $=id=>document.getElementById(id);
-const KINDS={'entry_exit':'Entry / Exit','counter':'Checkout queue','shelf':'Shelf / Inventory'};
-let SNAP=null;            // live snapshot from WS
-let HIST={minutes:[],hourly:[],daily:[]};  // history (live or stored)
-let RUNS=[];              // saved run list
-let REC={live:false,recommendation:null,run_id:null};
-let STORED=null;          // detail object of a saved run (used when not live)
-let charts={}, mjpegOn=false, pendingKind='entry_exit';
+const KINDS={
+  entry_exit:{title:'Upload Entry/Exit Video',desc:'Analyze store entry and exit',kind:'entry_exit'},
+  counter:{title:'Upload Counter Video',desc:'Analyze checkout queue',kind:'counter'},
+  shelf:{title:'Upload Shelf Video',desc:'Analyze shelf inventory',kind:'shelf'}
+};
+let SNAP=null, HIST={minutes:[],hourly:[],daily:[],peak_hours:[],activity:{}}, RUNS=[], REC=null, CFG=null;
+let charts={}, currentView='dashboard', sidebarOpen=true;
 
 // ---------------------------------------------------------------- helpers
-function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function num(v){return (typeof v==='number'&&isFinite(v))?v:null;}
-function mean(vals){vals=(vals||[]).filter(v=>typeof v==='number'&&isFinite(v)&&v>0); return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;}
-function dAvg(d){return d&&typeof d==='object'?mean(Object.values(d)):null;}
-function fmtSec(sec){sec=num(sec); if(sec==null)return '—';
-  if(sec<60)return Math.round(sec)+'s';
-  const m=Math.floor(sec/60),s=Math.round(sec%60); return `${m}m ${s}s`;}
-function fmtTime(ts){return ts?new Date(ts*1000).toTimeString().slice(0,5):'—';}
-function fmtDate(ts){return ts?new Date(ts*1000).toLocaleString():'—';}
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=v=>(typeof v==='number'&&isFinite(v))?v:null;
+const mean=a=>{a=(a||[]).filter(x=>typeof x==='number'&&isFinite(x)&&x>0);return a.length?a.reduce((x,y)=>x+y,0)/a.length:null;};
+const dAvg=d=>d&&typeof d==='object'?mean(Object.values(d)):null;
+function fmtSec(s){s=num(s);if(s==null)return '—';if(s<60)return Math.round(s)+'s';const m=Math.floor(s/60),r=Math.round(s%60);return `${m}m ${r}s`;}
+function fmtTime(t){return t?new Date(t*1000).toTimeString().slice(0,5):'—';}
+function fmtDate(t){return t?new Date(t*1000).toLocaleDateString():'—';}
 function badge(s){const b=String(s??'OK').toUpperCase().replace(/[^A-Z_]/g,'');
-  const cls=['FULL','LOW','LOW_STOCK','OUT','OUT_OF_STOCK','OK','NORMAL','INFO','WARNING','HIGH','ONLINE','OFFLINE','ERROR','RECONNECTING','MODEL_NOT_AVAILABLE'].includes(b)?b:'dim';
+  const cls=['FULL','IN_STOCK','OUT','OUT_OF_STOCK','LOW','LOW_STOCK','OK','NORMAL','INFO','WARNING','HIGH','ONLINE','OFFLINE','ERROR','RECONNECTING','blend','model','fallback'].includes(b)?b:'dim';
   return `<span class="badge ${cls}">${esc(s??'—')}</span>`;}
-function chart(id,cfg){if(charts[id])charts[id].destroy(); charts[id]=new Chart($(id),cfg); return charts[id];}
-const baseOpts={responsive:true,maintainAspectRatio:false,animation:false,
-  interaction:{mode:'index',intersect:false},
-  scales:{x:{ticks:{color:'#8fa0c8',maxTicksLimit:8,font:{size:10}},grid:{color:'#1a2749'}},
-          y:{beginAtZero:true,ticks:{color:'#8fa0c8',font:{size:10}},grid:{color:'#1a2749'}}},
-  plugins:{legend:{labels:{color:'#8fa0c8',boxWidth:12,font:{size:10}}}}};
+function chart(id,cfg){if(charts[id])charts[id].destroy();charts[id]=new Chart($(id),cfg);return charts[id];}
+const baseOpts={responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},
+  scales:{x:{ticks:{color:'#8F9AB3',maxTicksLimit:8,font:{size:10}},grid:{color:'#1A2749'}},
+  y:{beginAtZero:true,ticks:{color:'#8F9AB3',font:{size:10}},grid:{color:'#1A2749'}}},
+  plugins:{legend:{labels:{color:'#8F9AB3',boxWidth:12,font:{size:10}}}}};
 
-// data accessors: prefer live snapshot, else the selected stored run
-function cur(){return SNAP||(STORED&&STORED.current)||null;}
-function hist(){return SNAP?HIST:(STORED?STORED.history:HIST);}
-function activeView(){const s=[...document.querySelectorAll('main>section')].find(x=>!x.hidden); return s?s.dataset.view:null;}
+const CUR=()=>SNAP||null;
+const E=id=>document.getElementById(id);
+function setTxt(id,v){const x=E(id);if(x)x.textContent=v==null||v===''?'—':v;}
 
-// ---------------------------------------------------------------- navigation
-function showView(name){
-  document.querySelectorAll('main>section').forEach(s=>s.hidden=(s.dataset.view!==name));
-  history.pushState({view:name},'', '#/'+name);
-  if(!SNAP)applyStoredRun('');
-  fillView(name);
+// ---------------------------------------------------------------- sidebar nav
+const NAV=[
+  {id:'dashboard',label:'Dashboard',icon:'M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10'},
+  {id:'occupancy',label:'Occupancy',icon:'M16 11a4 4 0 10-8 0 4 4 0 008 0zM2 21c0-4 4-6 8-6s8 2 8 6'},
+  {id:'queue',label:'Queue Analytics',icon:'M3 7h7v14H3zM14 3h7v18h-7z'},
+  {id:'shelf',label:'Shelf Analytics',icon:'M4 3h16a1 1 0 011 1v4H3V4a1 1 0 011-1zM3 10h7v11H4a1 1 0 01-1-1zM14 10h7v10a1 1 0 01-1 1h-6z'},
+  {id:'dwell',label:'Dwell Time',icon:'M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z'},
+  {id:'suggestions',label:'AI Suggestions',icon:'M9 18h6M10 21h4M12 3a6 6 0 00-4 10c.7.7 1 1.5 1 2h6c0-.5.3-1.3 1-2a6 6 0 00-4-10z'},
+];
+const NAV2=[
+  {id:'reports',label:'Reports',icon:'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6'},
+  {id:'settings',label:'Settings',icon:'M12 8a4 4 0 100 8 4 4 0 000-8zm9 4l-2-1v-3l-2-1-2 1-1-2H14l-1 2h-2l-1-2H8l-2 1-2 1 1 3H2v3l2 1v3l2 1 2-1 1 2h2l1-2h2l1 2h2l2-1 2-1-1-3z'},
+];
+function buildNav(){
+  const frag=(g,items)=>`
+    <div class="nav-sep">${g}</div>`+items.map(n=>`
+    <div class="nav-item${currentView===n.id?' active':''}" data-nav="${n.id}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${n.icon}"/></svg>
+      <span>${n.label}</span>
+    </div>`).join('');
+  $('nav').innerHTML=frag('Insights',NAV)+frag('System',NAV2);
 }
-function fillView(name){
-  if(name==='occupancy')fillOcc();
-  if(name==='queue')fillQueue();
-  if(name==='dwell'||name==='shoppers')renderCharts();
-}
-document.querySelector('body').addEventListener('click',e=>{
-  const t=e.target.closest('[data-click]');
-  if(t&&!e.target.closest('.upload-btn')){showView(t.dataset.click);return;}
-  const b=e.target.closest('[data-back]'); if(b){showView('dashboard');}
+$('nav').addEventListener('click',e=>{const it=e.target.closest('[data-nav]');if(it)showView(it.dataset.nav);});
+$('hamburger').addEventListener('click',()=>{
+  sidebarOpen=!sidebarOpen;
+  $('sidebar').classList.toggle('collapsed',!sidebarOpen);
+  $('hamburger').setAttribute('aria-expanded',sidebarOpen);
 });
+
+// ---------------------------------------------------------------- routing
+function showView(name){
+  currentView=name;
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  const el=E('view-'+name); if(el)el.classList.add('active');
+  window.history.pushState({v:name},'', '#/'+name);
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.nav===name));
+  const meta={
+    dashboard:['Dashboard','Real-time retail intelligence'],
+    occupancy:['Occupancy Analytics','Analyze customer footfall, entries, exits and movement'],
+    queue:['Queue Analytics','Monitor checkout traffic and customer waiting times'],
+    shelf:['Shelf Analytics','Monitor inventory and detect low-stock or out-of-stock'],
+    dwell:['Dwell Time Analytics','Understand how long shoppers spend in different areas'],
+    suggestions:['AI Suggestions','Actionable recommendations from your analytics'],
+    reports:['Reports','Daily and weekly analytics downloads'],
+    settings:['Settings','System configuration and privacy'],
+  }[name]||['Dashboard',''];
+  $('pageTitle').textContent=meta[0]; $('pageSub').textContent=meta[1];
+  render(name);
+}
+window.addEventListener('popstate',()=>{const h=location.hash.replace('#/','');if(h)showView(h);});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&location.hash.startsWith('#/'))showView('dashboard');});
 
-// ---------------------------------------------------------------- cards
-function renderCards(){
-  const c=cur(), live=!!SNAP;
+// ---------------------------------------------------------------- render dispatch
+function render(name){
+  if(name==='dashboard')renderDashboard();
+  else if(name==='occupancy')renderOccupancy();
+  else if(name==='queue')renderQueue();
+  else if(name==='shelf')renderShelf();
+  else if(name==='dwell')renderDwell();
+  else if(name==='suggestions')renderSuggestions();
+  else if(name==='reports')renderReports();
+  else if(name==='settings')renderSettings();
+}
+
+// ================================================================ DASHBOARD
+function renderDashboard(){
+  const c=CUR(); const live=!!c;
   const f=c?.footfall||{}, q=c?.queues||{}, r=c?.reid||{}, d=c?.dwell||{}, sh=c?.shelves||[];
-  // when stopped, fall back to the summary of the most recent saved run (real numbers)
+  const al=c?.alerts?.active||[], sev=c?.alerts?.by_severity||{};
   const sm=!live&&RUNS[0]?RUNS[0].summary:null;
-  const occ=live?num(f.occupancy)??'—':(sm?sm.occupancy:'—');
-  $('mOccupancy').textContent=occ; $('mOccupancy').className='value'+(num(occ)>=22?' warn':'');
-  const entries=live?num(f.total_entries)||0:(sm?sm.entries:0);
-  const exits=live?num(f.total_exits)||0:(sm?sm.exits:0);
-  $('mFootfall').textContent=(live||sm)?`${entries} in · ${exits} out`:'entries / exits';
-  const uni=live?num(r.unique_shoppers??f.unique_shoppers)??'—':(sm?sm.unique_shoppers:'—');
-  $('mUnique').textContent=uni;
-  const qn=live?num(q.total)??'—':(sm?sm.queue_total:'—');
-  $('mQueue').textContent=qn; $('mQueue').className='value'+(num(qn)>=8?' bad':num(qn)>=4?' warn':'');
-  $('mWait').textContent=(live||sm)?`wait ≈ ${live?waitText(q):(sm?sm.wait_minutes+' min':'—')}`:'wait estimate';
-  const davg=live?dAvg(d?.avg_dwell_s):(sm?sm.avg_dwell_s:null);
-  $('mDwell').textContent=davg!=null?fmtSec(davg):'—';
-  $('mDwellSub').textContent=(live&&d?.occupancy&&typeof d.occupancy==='object'&&Object.keys(d.occupancy).length)?`${Object.keys(d.occupancy).length} zone(s) traced`:'avg time in-store';
-  const outS=sh.filter(x=>['OUT','OUT_OF_STOCK'].includes(x.status)).length;
-  const lowS=sh.filter(x=>['LOW','LOW_STOCK'].includes(x.status)).length;
-  const fullS=sh.filter(x=>x.status==='FULL').length;
-  const hasShelf=(live?sh.length:sm?sm.shelf_total:0)>0;
-  $('mShelf').textContent=!hasShelf?'—':(outS?`${outS} OUT`:lowS?`${lowS} LOW`:'OK');
-  $('mShelf').className='value '+(outS?'bad':lowS?'warn':'good');
-  $('mShelfSub').textContent=hasShelf?((live?`${fullS} FULL · ${lowS} LOW · ${outS} OUT`:`${sm.shelf_full} FULL · ${sm.shelf_low} LOW · ${sm.shelf_out} OUT`)):'shelves monitored';
-  const al=(live?c.alerts?.active:null)||[];
-  const n=al.length+(REC?.recommendation?1:0);
-  $('mAi').textContent=live?n:'—'; $('mAi').className='value '+(n?'warn':'good');
-  $('mAiSub').textContent=live?`${c.alerts?.by_severity?.INFO||0} · ${c.alerts?.by_severity?.WARNING||0} · ${c.alerts?.by_severity?.HIGH||0}`:'info · warning · high';
+  const today=new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  // trend placeholders use real current vs persisted summary when available
+  const trend=(cur,prev)=>{if(num(cur)==null)return null;if(num(prev)==null)return {dir:'flat',txt:'—'};
+    if(prev===0)return{dir:cur>0?'up':'flat',txt:''};const p=Math.round((cur-prev)/prev*100);
+    return{dir:p>=0?'up':'down',txt:`${p>=0?'↑':'↓'} ${Math.abs(p)}% vs saved`};};
+
+  const occ=num(f.occupancy)??num(sm?.occupancy);
+  const occTrend=trend(occ,sm?sm.occupancy:null);
+  const uni=num(r.unique_shoppers??f.unique_shoppers)??num(sm?.unique_shoppers);
+  const queueTotal=num(q.total)??num(sm?.queue_total);
+  const dwAvg=live?dAvg(d?.avg_dwell_s):num(sm?.avg_dwell_s);
+  const shelfOut=(sh.filter(x=>['OUT','OUT_OF_STOCK'].includes(x.status)).length)
+    +(sm?sm.shelf_out:0);
+  const shelfLow=(sh.filter(x=>['LOW','LOW_STOCK'].includes(x.status)).length)+(sm?sm.shelf_low:0);
+  const shelfTotal=(sh.length)||(sm?sm.shelf_total:0);
+  const shelfHealth=shelfTotal?Math.max(0,100-Math.round((shelfOut+shelfLow)/shelfTotal*100)):null;
+  const aiCount=(al.length)+(REC?1:0);
+
+  const uploadBtn=(kind,label)=>`<button class="upload-cta" data-upload="${kind}">${label}</button>`;
+
+  $('view-dashboard').innerHTML=`
+    <div class="hero">
+      <div>
+        <h2>Welcome back!</h2>
+        <p>Real-time insights for a smarter retail experience.</p>
+      </div>
+      <div class="date">${today}</div>
+    </div>
+
+    <div class="cards">
+      ${card('Occupancy','occupancy','#3B82F6',
+        'M16 11a4 4 0 10-8 0 4 4 0 008 0zM2 21c0-4 4-6 8-6s8 2 8 6',
+        occ!==null?occ:'—','People currently in store',occTrend,uploadBtn('entry_exit','Upload Entry/Exit Video'))}
+
+      ${card('Unique Shoppers','occupancy','#8B5CF6',
+        'M16 11a4 4 0 10-8 0 4 4 0 008 0zM2 21c0-4 4-6 8-6s8 2 8 6',
+        uni!==null?uni:'—','Unique visitors detected',null,null)}
+
+      ${card('Queue Now','queue','#F97316',
+        'M3 7h7v14H3zM14 3h7v18h-7z',
+        queueTotal!==null?queueTotal+' person'+(queueTotal===1?'':'s'):'—','Customers currently waiting',null,
+        uploadBtn('counter','Upload Counter Video'))}
+
+      ${card('Average Dwell Time','dwell','#8B5CF6',
+        'M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+        dwAvg!=null?fmtSec(dwAvg):'—','Average customer visit duration',null,null)}
+
+      ${shelfCard(shelfHealth,shelfOut,shelfLow,shelfTotal)}
+
+      ${card('AI Suggestions','suggestions','#FBBF24',
+        'M9 18h6M10 21h4M12 3a6 6 0 00-4 10c.7.7 1 1.5 1 2h6c0-.5.3-1.3 1-2a6 6 0 00-4-10z',
+        live?aiCount:'—','New actionable insights',null,null)}
+    </div>
+
+    <div class="ai-banner">
+      <div class="bulb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10c.7.7 1 1.5 1 2h6c0-.5.3-1.3 1-2a6 6 0 00-4-10z"/></svg></div>
+      <div style="flex:1">
+        <div class="tag">AI Suggestion</div>
+        <div class="msg ${REC?'':'none'}">${REC?esc(REC.text||'Recommendation available.'):'No recommendations available yet.'}</div>
+      </div>
+    </div>
+    <div class="dashboard-hint">Click any metric card to explore detailed analytics</div>
+  `;
+  bindCardClicks();
+}
+function card(title,target,acc,icon,val,sub,trend,upload){
+  return `<div class="metric" data-card="${target}" style="--acc:${acc}">
+    <div class="glow"></div>
+    <div class="m-top">
+      <span class="m-title">${title}</span>
+      <span class="m-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${icon}"/></svg></span>
+    </div>
+    <div class="m-val">${val}</div>
+    <div class="m-sub">${sub}</div>
+    ${trend?`<div class="m-trend ${trend.dir}">${esc(trend.txt)}</div>`:''}
+    <div class="foot">${upload?`<span style="flex:1">${upload}</span>`:'<span class="hint">&nbsp;</span>'}<span class="arrow">→</span></div>
+  </div>`;
+}
+function shelfCard(health,out,low,total){
+  const val=health!=null?health+'%':'—';
+  return `<div class="metric" data-card="shelf" style="--acc:#14B8A6">
+    <div class="glow"></div>
+    <div class="m-top">
+      <span class="m-title">Shelf Health</span>
+      <span class="m-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h16a1 1 0 011 1v4H3V4a1 1 0 011-1zM3 10h7v11H4a1 1 0 01-1-1zM14 10h7v10a1 1 0 01-1 1h-6z"/></svg></span>
+    </div>
+    <div class="m-val">${val}</div>
+    <div class="m-sub">Products currently in stock</div>
+    <div class="mini-status">
+      <span class="s"><span class="d green"></span>In Stock</span>
+      <span class="s"><span class="d amber"></span>Low</span>
+      <span class="s"><span class="d red"></span>Out</span>
+    </div>
+    <div class="foot"><button class="upload-cta" data-upload="shelf">Upload Shelf Video</button><span class="arrow">→</span></div>
+  </div>`;
+}
+function bindCardClicks(){
+  document.querySelectorAll('.metric').forEach(m=>{
+    m.addEventListener('click',e=>{
+      if(e.target.closest('.upload-cta'))return;
+      const t=m.dataset.card; if(t)showView(t);
+    });
+  });
+  document.querySelectorAll('.upload-cta').forEach(b=>{
+    b.addEventListener('click',e=>{e.stopPropagation();openUpload(b.dataset.upload);});
+  });
+}
+
+// ================================================================ OCCUPANCY
+function renderOccupancy(){
+  const c=CUR(); const m=HIST.minutes||[], h=HIST.hourly||[];
+  const occ=c?.footfall, peak=Math.max(0,...m.map(x=>x.peak_occupancy));
+  $('view-occupancy').innerHTML=`
+    <div class="analytics-header">
+      <div>
+        <button class="back" data-back>← Back to Dashboard</button>
+        <h2 style="margin-top:8px">Occupancy Analytics</h2>
+        <div class="sub">Analyze customer footfall, store occupancy, entries, exits and movement patterns.</div>
+      </div>
+      <div class="actions"><button class="btn ghost" data-upload="entry_exit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Upload Entry/Exit Video</button></div>
+    </div>
+    <div class="stats">
+      ${statCard('Current Occupancy',c?num(occ?.occupancy)??'—':'—','#3B82F6')}
+      ${statCard('Total Entries Today',c?num(occ?.total_entries)??0:'—','#34D399')}
+      ${statCard('Total Exits Today',c?num(occ?.total_exits)??0:'—','#F87171')}
+      ${statCard('Peak Occupancy',m.length?peak:'—','#8B5CF6')}
+    </div>
+    <div class="tabs" data-tabs="occ">
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="heatmap">Heatmap</button>
+      <button class="tab" data-tab="trends">Trends</button>
+    </div>
+    <div id="occ-overview" class="tab-pane active">
+      ${m.length?`<div class="grid2">
+        <div class="panel"><h3>Footfall &amp; occupancy</h3><div class="chart-hold"><canvas id="occChart"></canvas></div></div>
+        <div class="panel"><h3>Hourly footfall</h3><div class="chart-hold"><canvas id="occHour"></canvas></div></div>
+      </div>`:emptyState('No occupancy data yet','Upload an Entry/Exit video to begin analysis.<br><br><button class="btn solid" data-upload="entry_exit">Upload Video</button>')}
+    </div>
+    <div id="occ-heatmap" class="tab-pane">
+      <div class="panel"><h3>Store movement heatmap</h3>
+      ${c||RUNS?`<img class="media" id="occHeatImg" alt="movement heatmap"/>`:`${emptyState('No heatmap yet','Run an Entry/Exit analysis to generate a movement heatmap.')}`}
+      </div>
+    </div>
+    <div id="occ-trends" class="tab-pane">
+      ${m.length?`<div class="grid2b">
+        <div class="panel"><h3>Entry vs Exit</h3><div class="chart-hold"><canvas id="occBar"></canvas></div></div>
+        <div class="panel"><h3>Peak occupancy per hour</h3><div class="chart-hold sm"><canvas id="occPeak"></canvas></div></div>
+      </div>`:emptyState('No trends yet','Footfall trends will appear once a video is analyzed.',false)}
+    </div>
+  `;
+  bindCommon(); bindTabs('occ'); bindHeat('occHeatImg');
+  if(m.length){
+    chart('occChart',{type:'line',data:{labels:m.map(x=>fmtTime(x.ts)),datasets:[
+      {label:'occupancy',data:m.map(x=>x.avg_occupancy),borderColor:'#3B82F6',tension:.3,pointRadius:0,fill:true,backgroundColor:'rgba(59,130,246,.12)'},
+      {label:'entries',data:m.map(x=>x.entries),borderColor:'#34D399',tension:.3,pointRadius:0},
+      {label:'exits',data:m.map(x=>x.exits),borderColor:'#F87171',tension:.3,pointRadius:0}]},options:{...baseOpts}});
+    chart('occHour',{type:'bar',data:{labels:h.map(x=>fmtTime(x.ts)),datasets:[{label:'footfall/hr',data:h.map(x=>x.entries),backgroundColor:'#34D399'}]},options:{...baseOpts}});
+    chart('occBar',{type:'bar',data:{labels:h.map(x=>fmtTime(x.ts)),datasets:[
+      {label:'entries',data:h.map(x=>x.entries),backgroundColor:'#34D399'},
+      {label:'exits',data:h.map(x=>x.exits),backgroundColor:'#F87171'}]},options:{...baseOpts}});
+    const pk=(HIST.peak_hours||[]).slice(0,8);
+    chart('occPeak',{type:'bar',data:{labels:pk.map(x=>x.hour+':00'),datasets:[{label:'avg footfall',data:pk.map(x=>x.avg_footfall),backgroundColor:'#8B5CF6'}]},options:{...baseOpts}});
+  }
+}
+
+// ================================================================ QUEUE
+function renderQueue(){
+  const c=CUR(); const m=HIST.minutes||[]; const q=c?.queues||{};
+  const p=q.predictions||{};
+  const meas=q.measured_wait_minutes||{};
+  const mv=Object.values(meas).filter(x=>x&&x.count);
+  const wait=waitText(q);
+  $('view-queue').innerHTML=`
+    <div class="analytics-header">
+      <div>
+        <button class="back" data-back>← Back to Dashboard</button>
+        <h2 style="margin-top:8px">Queue Analytics</h2>
+        <div class="sub">Monitor checkout traffic and customer waiting times.</div>
+      </div>
+      <div class="actions"><button class="btn ghost" data-upload="counter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Upload Counter Video</button></div>
+    </div>
+    <div class="stats">
+      ${statCard('Current Queue',num(q.total)??'—','#F97316')}
+      ${statCard('Average Wait Time',wait,'#F97316')}
+      ${statCard('Peak Queue Today',m.length?Math.max(0,...m.map(x=>x.peak_queue)):'—','#FBBF24')}
+    </div>
+    <div class="tabs" data-tabs="queue">
+      <button class="tab active" data-tab="trends">Live View</button>
+      <button class="tab" data-tab="history">Queue Trends</button>
+      <button class="tab" data-tab="wait">Wait Time</button>
+    </div>
+    <div id="queue-trends" class="tab-pane active">
+      ${c?`<div class="grid2">
+        <div class="panel"><h3>Per-checkout</h3><div id="queuePer">${perCheckout(q,meas)}</div></div>
+        <div class="panel"><h3>Forecast (5 &amp; 10 min)</h3><div class="chart-hold"><canvas id="predChart"></canvas></div></div>
+      </div>`:emptyState('No queue analysis yet','Upload a Counter video to analyze checkout traffic.<br><br><button class="btn solid" data-upload="counter">Upload Video</button>')}
+    </div>
+    <div id="queue-history" class="tab-pane">
+      ${m.length?`<div class="panel"><h3>Queue length over time</h3><div class="chart-hold"><canvas id="queueChart"></canvas></div></div>`:emptyState('No queue history yet','Queue trends will appear after a Counter video is analyzed.',false)}
+    </div>
+    <div id="queue-wait" class="tab-pane">
+      ${c?`<div class="grid2b">
+        <div class="panel"><h3>Est vs measured wait (min)</h3><div class="chart-hold"><canvas id="waitChart"></canvas></div></div>
+        <div class="panel"><h3>Wait estimate per checkout</h3><div id="waitList"></div></div>
+      </div>`:emptyState('No wait data yet','Wait time analysis requires a Counter video.',false)}
+    </div>
+  `;
+  bindCommon(); bindTabs('queue'); bindWaitChart(q,meas,mv);
+  if(c){
+    const now=num(q.total)??0, p5=p['5min']??p['predicted_queue_length_5min'], p10=p['10min']??p['predicted_queue_length_10min'];
+    const iv=p.interval_10min||{};
+    chart('predChart',{type:'bar',data:{labels:['now','5 min','10 min'],datasets:[
+      {label:'queue length',data:[now,p5,p10].map(x=>x==null?null:+x.toFixed?+x.toFixed(1):x),backgroundColor:['#8F9AB3','#3B82F6','#F97316']},
+      ...(iv.high!=null?[{type:'line',label:'80% CI (10m)',data:[null,null,iv.high],borderColor:'#F87171',borderDash:[5,4],pointRadius:0},
+        {type:'line',label:'80% CI low',data:[null,null,iv.low],borderColor:'#F87171',borderDash:[5,4],pointRadius:0}]:[])]},options:{...baseOpts}});
+  }
+  if(m.length){
+    chart('queueChart',{type:'line',data:{labels:m.map(x=>fmtTime(x.ts)),datasets:[
+      {label:'avg queue',data:m.map(x=>x.avg_queue),borderColor:'#F97316',tension:.3,pointRadius:0,fill:true,backgroundColor:'rgba(249,115,22,.12)'},
+      {label:'peak queue',data:m.map(x=>x.peak_queue),borderColor:'#FBBF24',tension:.3,pointRadius:0}]},options:{...baseOpts}});
+  }
+}
+function perCheckout(q,meas){
+  if(!q.queues?.length)return '<div class="empty">No checkout zones detected yet.</div>';
+  return '<table><thead><tr><th>Checkout</th><th>Length</th><th>Status</th></tr></thead><tbody>'+
+    q.queues.map(x=>`<tr><td>${esc(x.queue_id)}</td><td>${x.length}</td><td>${badge(x.status)}</td></tr>`).join('')+'</tbody></table>';
 }
 function waitText(q){
   const w=q.wait_minutes;
   if(typeof w==='number')return Number(w).toFixed(1)+' min';
-  const a=mean(Object.values(w||{})); return a!=null?a.toFixed(1)+' min':'—';
+  const a=mean(Object.values(w||{}));return a!=null?a.toFixed(1)+' min':'—';
+}
+function bindWaitChart(q,meas,mv){
+  const el=E('waitChart'); if(!el)return;
+  const w=Object.entries(q.wait_minutes||{}).filter(([,v])=>num(v)!=null);
+  if(!w.length&&!mv.length){E('waitList').innerHTML='<div class="empty">Select a checkout zone to see wait estimates.</div>';return;}
+  chart('waitChart',{type:'bar',data:{labels:w.map(([k])=>k),datasets:[
+    {label:'est (rule)',data:w.map(([,v])=>v),backgroundColor:'#3B82F6'},
+    {label:'measured avg',data:w.map(([k])=>{const x=meas[k];return x&&x.count?x.avg_wait_minutes:null;}),backgroundColor:'#F97316'}]},options:{...baseOpts}});
+  const mm=Object.entries(meas).filter(([,v])=>v&&v.count);
+  E('waitList').innerHTML=mm.length?
+    '<table><thead><tr><th>Checkout</th><th>Measured avg</th><th>Max</th></tr></thead><tbody>'+
+    mm.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${Number(v.avg_wait_minutes).toFixed(1)} min</td><td>${Number(v.max_wait_minutes).toFixed(1)} min</td></tr>`).join('')+'</tbody></table>':
+    '<div class="empty">No measured wait data yet.</div>';
 }
 
-// recommendation bar
-function renderRec(){
-  const rec=REC&&REC.recommendation;
-  const msg=$('recMsg'), src=$('recSrc');
-  if(!rec){msg.textContent='No recommendations available yet.';msg.className='msg ok';src.innerHTML='';}
-  else{
-    msg.textContent=rec.text||'Actionable recommendation.';
-    msg.className='msg '+(rec.source==='queue'?'warn':'ok');
-    const fx=rec.factors||{};
-    src.innerHTML=`${badge(rec.source)} <div class="factors">${Object.entries(fx).filter(([k,v])=>k!=='shelves'&&v!=null).map(([k,v])=>`<span class="factor">${esc(k)}: ${esc(typeof v==='number'?+v.toFixed(1):v)}</span>`).join('')}</div>`;
-  }
-  if($('aiRecMsg')){$('aiRecMsg').textContent=msg.textContent;$('aiRecMsg').className=msg.className;$('aiRecSrc').innerHTML=src.innerHTML;}
-}
-
-// ---------------------------------------------------------------- stored runs
-function bestRun(kind){return RUNS.find(r=>r.kind===kind)||RUNS[0];}
-function fillRunPickers(){
-  document.querySelectorAll('select[data-kpick]').forEach(sel=>{
-    const kind=sel.dataset.kpick;
-    const opts=RUNS.filter(r=>!kind||r.kind===kind).map(r=>{
-      const total=r.summary;
-      let label=`${KINDS[r.kind]} · ${fmtDate(r.ended_ts)}`;
-      if(kind==='entry_exit')label+=` · ${total.unique_shoppers} uniq`;
-      if(kind==='counter')label+=` · queue ${total.queue_total}`;
-      if(kind==='shelf')label+=` · ${total.shelf_total} shelves`;
-      return `<option value="${r.id}">${label}</option>`;
-    }).join('');
-    const optAll=`<option value="">${SNAP?`live${STORED&&STORED.kind===kind?' (saved shown)':''}`:'auto (latest)'}</option>`+opts;
-    if(sel.innerHTML!==optAll){sel.innerHTML=optAll; sel.value=sel.dataset.pick||'';}
-  });
-}
-async function applyStoredRun(selId){
-  if(SNAP)return;
-  const sel=selId?document.querySelector(`#${selId}`):null;
-  const kind=sel?sel.closest('section').dataset.view:null;
-  const runId=sel?sel.value:(bestRun(kind)?bestRun(kind).id:null);
-  if(!runId){STORED=null; return;}
-  try{
-    const r=await fetch('/api/runs/'+runId); const j=await r.json();
-    if(!r.ok)return;
-    STORED=j; SNAP=null; HIST=STORED.history||HIST;
-    fillView(activeView()); renderCharts(); renderCards();
-  }catch(e){}
-}
-document.querySelector('main').addEventListener('change',e=>{
-  const sel=e.target.closest('select[data-kpick]'); if(!sel)return;
-  SNAP=null; STORED=null;
-  if(sel.value){fetch('/api/runs/'+sel.value).then(r=>r.ok?r.json():null).then(j=>{
-    if(j){STORED=j;HIST=j.history||HIST;fillView(activeView());renderCharts();renderCards();}});}
-  else{fillView(activeView());}
-});
-
-// ---------------------------------------------------------------- detail fills
-function fillOcc(){
-  const c=cur();
-  setV('sOcc',c?num(c.footfall?.occupancy)??'—':'—');
-  setV('sIn',c?num(c.footfall?.total_entries)??0:'—');
-  setV('sOut',c?num(c.footfall?.total_exits)??0:'—');
-  const mins=hist().minutes||[];
-  setV('sPeakOcc',mins.length?Math.max(0,...mins.map(m=>m.peak_occupancy)):null);
-  const img=$('occHeat');
-  if(SNAP){img.src='/api/heatmap.png?v='+Date.now();mjpeg(true);}
-  else if(STORED){img.src='/api/runs/'+STORED.id+'/heatmap.png?v='+Date.now();}
-  frameFor(img, 'occFrame','occVid');
-}
-function frameFor(_, boxId, imgId){
-  const box=$(boxId), img=$(imgId);
-  if(SNAP&&SNAP.video_frame){box.style.display=''; if(!img.src||!img.src.includes('/video_stream'))img.src='/video_stream?v='+Date.now();}
-  else if(STORED){box.style.display=''; img.removeAttribute('src'); img.src='/api/runs/'+STORED.id+'/frame.jpg?v='+Date.now();}
-  else box.style.display='none';
-}
-function fillQueue(){
-  const c=cur();
-  const q=c?.queues||{};
-  setV('sQueue',num(q.total)??'—');
-  setV('sWait',waitText(q));
-  const meas=q.measured_wait_minutes||{};
-  const mv=Object.values(meas).filter(m=>m&&m.count>0);
-  setV('sMeasWait',SNAP?(mv.length?mean(mv.map(m=>m.avg_wait_minutes))?.toFixed(1)+' min':'—'):'—');
-  const p=q.predictions||{};
-  const p5=p['5min']??p['predicted_queue_length_5min'];
-  const p10=p['10min']??p['predicted_queue_length_10min'];
-  setV('sPred10',p10??'—');
-  const src=p.source||q.prediction_source;
-  $('sPred10').innerHTML=(p10??'—')+' <span class="badge '+(src==='blend'?'blend':src==='model'?'model':src==='fallback'?'fallback':'dim')+'">'+esc(src||'source')+'</span>';
-  const rows=(q.queues||[]).map(x=>{
-    const m=meas[x.queue_id]||{};
-    return `<tr><td>${esc(x.queue_id)}</td><td>${x.length}</td>
-      <td>${num(x.wait_minutes)!=null?Number(x.wait_minutes).toFixed(1)+' min':'—'}</td>
-      <td>${m.count?Number(m.avg_wait_minutes).toFixed(1)+' min':'—'}</td><td>${badge(x.status)}</td></tr>`;}).join('');
-  $('queueTable').innerHTML=(q.queues?.length)?
-    '<table><thead><tr><th>Checkout</th><th>Length</th><th>Est wait</th><th>Measured avg</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>':
-    '<div class="empty">No checkout queue data yet.</div>';
-}
-function fillShelf(){
-  const c=cur();
-  const sh=c?.shelves||[];
-  setV('sShelves',sh.length||null);
-  const outS=sh.filter(x=>['OUT','OUT_OF_STOCK'].includes(x.status)).length;
-  const lowS=sh.filter(x=>['LOW','LOW_STOCK'].includes(x.status)).length;
-  const fullS=sh.filter(x=>x.status==='FULL').length;
-  setV('sShelfCounts',sh.length?`${fullS} / ${lowS} / ${outS}`:'—');
+// ================================================================ SHELF
+function renderShelf(){
+  const c=CUR(); const sh=c?.shelves||[];
   const pg=c?.planogram||{};
-  const ready=pg?.status && pg.status!=='MODEL_NOT_AVAILABLE' && pg.product_model;
-  setV('sPlanogram',ready?'READY':(pg?.status==='MODEL_NOT_AVAILABLE'?'N/A (no model)':'N/A'));
-  $('sPlanogram').className='value '+(ready?'good':'warn');
-  const rows=sh.map(s=>`<tr><td>${esc(s.shelf_id||s.id)}</td><td>${badge(s.status)}</td>
-    <td>${badge(s.source)}</td><td>${s.confirmed?'✓':'pending'}</td>
-    <td>${typeof s.stock_out_risk==='number'?Math.round(s.stock_out_risk*100)+'%':'—'}</td>
-    <td>${num(s.est_time_to_out_minutes)!=null?fmtSec(s.est_time_to_out_minutes*60):'—'}</td>
-    <td>${esc(s.trend||'—')}</td></tr>`).join('');
-  $('shelfTable').querySelector('tbody').innerHTML=sh.length?rows:'<tr><td colspan="7" class="empty">No shelf data yet — upload a shelf video.</td></tr>';
-  chart('shelfBar',{type:'bar',data:{labels:sh.map(s=>s.shelf_id),datasets:[
-    {label:'FULL',data:sh.map(s=>s.status==='FULL'?1:0),backgroundColor:'#34d399'},
-    {label:'LOW',data:sh.map(s=>['LOW','LOW_STOCK'].includes(s.status)?1:0),backgroundColor:'#fbbf24'},
-    {label:'OUT',data:sh.map(s=>['OUT','OUT_OF_STOCK'].includes(s.status)?1:0),backgroundColor:'#f87171'}
-  ]},options:{...baseOpts,scales:{x:{stacked:true,ticks:{color:'#8fa0c8',font:{size:10}},grid:{color:'#1a2749'}},y:{stacked:true,ticks:{color:'#8fa0c8',font:{size:10}},grid:{color:'#1a2749'}}},plugins:{legend:{labels:{color:'#8fa0c8',boxWidth:12,font:{size:10}}}}}});
-  frameFor(null,'shelfFrame','shelfVid');
-}
-function fillAi(){
-  const c=cur();
-  const al=(SNAP?c.alerts?.active:null)||(STORED?STORED.current.alerts?.active:null)||[];
-  $('aiAlerts').innerHTML=al.length?al.map(a=>`<div class="alert-item">${badge(a.severity)}<span title="${esc(a.type)} · ${esc(a.source)}">${esc(a.message)}</span></div>`).join(''):'<div class="empty">No active alerts.</div>';
-  const sev=(SNAP?c.alerts?.by_severity:STORED?STORED.current.alerts?.by_severity:null)||{};
-  $('aiAlertsOld').innerHTML=Object.keys(sev).length?
-    `<table><thead><tr><th>Severity</th><th>Active</th></tr></thead><tbody>
-     <tr><td>INFO</td><td>${sev.INFO||0}</td></tr>
-     <tr><td>WARNING</td><td>${sev.WARNING||0}</td></tr>
-     <tr><td>HIGH</td><td>${sev.HIGH||0}</td></tr></tbody></table>`:
-    '<div class="empty">—</div>';
-}
-function setV(id,v){$(id).innerHTML=v==null||v===''?'—':v;}
-
-// ---------------------------------------------------------------- charts
-function renderCharts(){
-  const v=activeView(); if(!v)return;
-  const m=hist().minutes||[], h=hist().hourly||[];
-  if(v==='occupancy'){
-    if(m.length)chart('occChart',{type:'line',data:{labels:m.map(x=>fmtTime(x.ts)),datasets:[
-      {label:'occupancy',data:m.map(x=>x.avg_occupancy),borderColor:'#4c8dff',tension:.3,pointRadius:0,borderWidth:2},
-      {label:'entries',data:m.map(x=>x.entries),borderColor:'#34d399',tension:.3,pointRadius:0,borderWidth:1},
-      {label:'exits',data:m.map(x=>x.exits),borderColor:'#f87171',tension:.3,pointRadius:0,borderWidth:1}]},options:{...baseOpts}});
-    if(h.length)chart('occHourChart',{type:'bar',data:{labels:h.map(x=>fmtTime(x.ts)),datasets:[
-      {label:'footfall/hr',data:h.map(x=>x.entries),backgroundColor:'#34d399'}]},options:{...baseOpts}});
-  }
-  if(v==='shoppers'&&m.length){
-    chart('uniqueChart',{type:'line',data:{labels:m.map(x=>fmtTime(x.ts)),datasets:[
-      {label:'unique shoppers (window)',data:m.map(x=>x.peak_unique),borderColor:'#a78bfa',tension:.3,pointRadius:0,borderWidth:2,fill:true,backgroundColor:'rgba(167,139,250,.15)'}]},options:{...baseOpts}});
-    if(SNAP){setV('sUnique',SNAP.reid?.unique_shoppers??SNAP.footfall?.unique_shoppers);setV('sActive',SNAP.reid?.active_identities);setV('sReid',SNAP.reid?.enabled?'ENABLED':'off');}
-    else if(STORED){setV('sUnique',STORED.current?.reid?.unique_shoppers??STORED.summary?.unique_shoppers);setV('sActive',STORED.current?.reid?.active_identities);setV('sReid',STORED.current?.reid?.enabled?'ENABLED':'off');}
-  }
-  if(v==='queue'){
-    if(m.length)chart('queueChart',{type:'line',data:{labels:m.map(x=>fmtTime(x.ts)),datasets:[
-      {label:'avg queue',data:m.map(x=>x.avg_queue),borderColor:'#fbbf24',tension:.3,pointRadius:0,borderWidth:2,fill:true,backgroundColor:'rgba(251,191,36,.15)'},
-      {label:'peak queue',data:m.map(x=>x.peak_queue),borderColor:'#4c8dff',tension:.3,pointRadius:0,borderWidth:1}]},options:{...baseOpts}});
-    const c=cur(), q=c?.queues||{}, p=q.predictions||{};
-    if(c){ // when live, per-zone live history exists under q.history; prefer persisted history anyway
-      const iv=p.interval_10min||{};
-      const now=num(q.total)??0, p5=p['5min']??p['predicted_queue_length_5min']??null, p10=p['10min']??p['predicted_queue_length_10min']??null;
-      chart('predChart',{type:'bar',data:{labels:['now','5 min','10 min'],
-        datasets:[{label:'queue length',data:[now,p5,p10].map(x=>x==null?null:+x.toFixed?+x.toFixed(1):x),backgroundColor:['#8fa0c8','#4c8dff','#fbbf24']},
-        ...(iv.high!=null?[
-          {type:'line',label:'80% CI high (10m)',data:[null,null,iv.high],borderColor:'#f87171',borderDash:[5,4],pointRadius:0,borderWidth:1.5},
-          {type:'line',label:'80% CI low (10m)',data:[null,null,iv.low],borderColor:'#f87171',borderDash:[5,4],pointRadius:0,borderWidth:1.5}]:[])]},
-        options:{...baseOpts,plugins:{legend:{labels:{color:'#8fa0c8',boxWidth:12,font:{size:10}}}}}});
-      const w=Object.entries(q.wait_minutes||{}).filter(([,v])=>num(v)!=null);
-      const mm=Object.entries(q.measured_wait_minutes||{});
-      chart('waitChart',{type:'bar',data:{labels:w.map(([k])=>k),datasets:[
-        {label:'est (rule-based)',data:w.map(([,v])=>v),backgroundColor:'#4c8dff'},
-        {label:'measured avg',data:w.map(([k])=>{const x=mm.find(([kk])=>kk===k);return x&&x[1]&&x[1].count?x[1].avg_wait_minutes:null;}),backgroundColor:'#34d399'}]},options:{...baseOpts}});
-    }
-  }
-  if(v==='dwell'){
-    const d=cur()?.dwell||{};
-    const av=d.avg_dwell_s||{}, oz=d.occupancy||{};
-    chart('dwellChart',{type:'bar',data:{labels:Object.keys(av),datasets:[{label:'avg dwell (s)',data:Object.values(av).map(Math.round),backgroundColor:'#4c8dff'}]},options:{...baseOpts}});
-    chart('dwellOccChart',{type:'bar',data:{labels:Object.keys(oz),datasets:[{label:'occupants now',data:Object.values(oz),backgroundColor:'#34d399'}]},options:{...baseOpts}});
-    setV('sDwellAvg',fmtSec(dAvg(av)));
-    setV('sDwellNow',fmtSec(dAvg(d.current_dwell_s)));
-    setV('sZones',Object.keys(av).length||null);
-    const img=$('dwellHeat');
-    if(SNAP)img.src='/api/heatmap.png?v='+Date.now();
-    else if(STORED)img.src='/api/runs/'+STORED.id+'/heatmap.png?v='+Date.now();
+  const ready=pg?.status&&pg.status!=='MODEL_NOT_AVAILABLE'&&pg.product_model;
+  const outS=sh.filter(x=>['OUT','OUT_OF_STOCK'].includes(x.status));
+  const lowS=sh.filter(x=>['LOW','LOW_STOCK'].includes(x.status));
+  const fullS=sh.filter(x=>x.status==='FULL');
+  const health=sh.length?Math.max(0,100-Math.round((outS.length+lowS.length)/sh.length*100)):null;
+  $('view-shelf').innerHTML=`
+    <div class="analytics-header">
+      <div>
+        <button class="back" data-back>← Back to Dashboard</button>
+        <h2 style="margin-top:8px">Shelf Analytics</h2>
+        <div class="sub">Monitor shelf inventory and detect low-stock or out-of-stock products.</div>
+      </div>
+      <div class="actions"><button class="btn ghost" data-upload="shelf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Upload Shelf Video</button></div>
+    </div>
+    <div class="stats">
+      ${statCard('Shelf Health',health!=null?health+'%':'—','#14B8A6')}
+      ${statCard('In Stock',fullS.length||'—','#34D399')}
+      ${statCard('Low Stock',lowS.length||'—','#FBBF24')}
+      ${statCard('Out of Stock',outS.length||'—','#F87171')}
+    </div>
+    <div class="tabs" data-tabs="shelf">
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="map">Shelf Map</button>
+      <button class="tab" data-tab="low">Low Stock</button>
+    </div>
+    <div id="shelf-overview" class="tab-pane active">
+      ${sh.length?`<div class="grid2">
+        <div class="panel"><h3>Shelf status breakdown</h3><div class="chart-hold"><canvas id="shelfBar"></canvas></div></div>
+        <div class="panel"><h3>Planogram model</h3><div class="chart-hold" id="planogramBox"></div></div>
+      </div>
+      <div class="panel"><h3>Shelf status board</h3>
+        <table><thead><tr><th>Shelf</th><th>Status</th><th>Source</th><th>Confirmed</th><th>Stock-out risk</th></tr></thead><tbody>
+        ${sh.map(s=>`<tr><td>${esc(s.shelf_id||s.id)}</td><td>${badge(s.status)}</td><td>${badge(s.source)}</td><td>${s.confirmed?'✓':'pending'}</td><td>${typeof s.stock_out_risk==='number'?Math.round(s.stock_out_risk*100)+'%':'—'}</td></tr>`).join('')}
+        </tbody></table></div>
+        `:emptyState('No shelf data yet','Upload a Shelf video to begin inventory monitoring.<br><br><button class="btn solid" data-upload="shelf">Upload Video</button>')}
+    </div>
+    <div id="shelf-map" class="tab-pane">
+      <div class="panel"><h3>Processed shelf frame</h3>
+      ${c||RUNS?`<img class="media" id="shelfFrameImg" alt="shelf detection frame"/>`:emptyState('No processed frame yet','Shelf detection frames appear after analysis.')}
+      </div>
+    </div>
+    <div id="shelf-low" class="tab-pane">
+      ${(lowS.length||outS.length)?`<div class="panel"><h3>Needs attention</h3>
+        ${[...lowS,...outS].map(s=>`<div class="rec-card" style="border-left-color:${['OUT','OUT_OF_STOCK'].includes(s.status)?'#F87171':'#FBBF24'}">
+          <div class="r-top"><span class="pill-pr ${['OUT','OUT_OF_STOCK'].includes(s.status)?'high':'medium'}">${['OUT','OUT_OF_STOCK'].includes(s.status)?'OUT OF STOCK':'LOW STOCK'}</span><span class="cat">${esc(s.shelf_id||s.id)}</span></div>
+          <div class="r-text">Recommendation: ${['OUT','OUT_OF_STOCK'].includes(s.status)?'Restock immediately.':'Restock soon.'}</div>
+        </div>`).join('')}</div>`:
+        emptyState('All shelves in stock','No low-stock or out-of-stock items detected.')}
+    </div>
+  `;
+  bindCommon(); bindTabs('shelf'); bindHeat('shelfFrameImg');
+  if(sh.length){
+    chart('shelfBar',{type:'bar',data:{labels:sh.map(s=>s.shelf_id||s.id),datasets:[
+      {label:'FULL',data:sh.map(s=>s.status==='FULL'?1:0),backgroundColor:'#34D399'},
+      {label:'LOW',data:sh.map(s=>['LOW','LOW_STOCK'].includes(s.status)?1:0),backgroundColor:'#FBBF24'},
+      {label:'OUT',data:sh.map(s=>['OUT','OUT_OF_STOCK'].includes(s.status)?1:0),backgroundColor:'#F87171'}]},
+      options:{...baseOpts,scales:{x:{stacked:true,ticks:{color:'#8F9AB3'},grid:{color:'#1A2749'}},y:{stacked:true,ticks:{color:'#8F9AB3'},grid:{color:'#1A2749'}}},plugins:{legend:{labels:{color:'#8F9AB3',boxWidth:12,font:{size:10}}}}}});
+    E('planogramBox').innerHTML=`
+      <div style="display:flex;align-items:center;gap:14px;height:100%;justify-content:center">
+        <div style="text-align:center"><div style="font-size:34px;font-weight:800;color:${ready?'#34D399':'#FBBF24'}">${ready?'READY':'N/A'}</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:6px">${pg?.product_model?'Product detector loaded':pg?.status==='MODEL_NOT_AVAILABLE'?'No product detector available':pg?.status||'—'}</div></div>
+      </div>`;
   }
 }
 
-// ---------------------------------------------------------------- uploads
-function bindUploads(){
-  document.querySelectorAll('.upload-btn').forEach(b=>{
-    b.addEventListener('click',e=>{e.stopPropagation();pendingKind=b.dataset.kind;$('fileInput').click();});
+// ================================================================ DWELL
+function renderDwell(){
+  const c=CUR(); const d=c?.dwell||{};
+  const av=d.avg_dwell_s||{}, oz=d.occupancy||{};
+  $('view-dwell').innerHTML=`
+    <div class="analytics-header">
+      <div>
+        <button class="back" data-back>← Back to Dashboard</button>
+        <h2 style="margin-top:8px">Dwell Time Analytics</h2>
+        <div class="sub">Understand how long shoppers spend in different areas of the store.</div>
+      </div>
+      <div class="actions"><button class="btn ghost" data-upload="entry_exit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Upload Entry/Exit Video</button></div>
+    </div>
+    <div class="stats">
+      ${statCard('Average Dwell Time',fmtSec(dAvg(av)),'#8B5CF6')}
+      ${statCard('Peak Dwell Time',fmtSec(Math.max(0,...Object.values(av).map(Math.round))),'#EC4899')}
+      ${statCard('Zones Tracked',Object.keys(av).length||'—','#14B8A6')}
+    </div>
+    ${Object.keys(av).length?`<div class="grid2">
+      <div class="panel"><h3>Avg dwell per zone</h3><div class="chart-hold"><canvas id="dwellChart"></canvas></div></div>
+      <div class="panel"><h3>Current occupants per zone</h3><div class="chart-hold"><canvas id="dwellOcc"></canvas></div></div>
+    </div>
+    <div class="panel"><h3>Zone movement heatmap</h3><img class="media" id="dwellHeatImg" alt="zone heatmap" style="max-height:340px"/></div>`:
+    emptyState('No dwell data yet','Upload an Entry/Exit video to analyze shopper dwell time.')}
+  `;
+  bindCommon(); bindHeat('dwellHeatImg');
+  if(Object.keys(av).length){
+    chart('dwellChart',{type:'bar',data:{labels:Object.keys(av),datasets:[{label:'avg dwell (s)',data:Object.values(av).map(Math.round),backgroundColor:'#8B5CF6'}]},options:{...baseOpts}});
+    chart('dwellOcc',{type:'bar',data:{labels:Object.keys(oz),datasets:[{label:'occupants now',data:Object.values(oz),backgroundColor:'#14B8A6'}]},options:{...baseOpts}});
+  }
+}
+
+// ================================================================ SUGGESTIONS
+function renderSuggestions(){
+  const c=CUR();
+  const cards=[];
+  if(REC)cards.push(recCard('HIGH','Queue','#F87171',REC.text||'Open an additional counter.','Reduce customer wait time','Current queue / forecast'));
+  const high=(c?.alerts?.active||[]).filter(a=>a.severity==='HIGH');
+  const warn=(c?.alerts?.active||[]).filter(a=>a.severity==='WARNING');
+  high.forEach(a=>cards.push(recCard('HIGH',a.type==='camera'?'Camera':'Alert','#F87171',a.message,'Resolve the alert','Alerts')));
+  warn.forEach(a=>cards.push(recCard('MEDIUM',a.type==='camera'?'Camera':'Alert','#FBBF24',a.message,'Monitor closely','Alerts')));
+  const sho=c?.shelves||[];
+  sho.filter(s=>['OUT','OUT_OF_STOCK'].includes(s.status)).forEach(s=>cards.push(recCard('HIGH','Shelf','#F87171',`Shelf ${s.shelf_id||s.id} is out of stock. Restock the affected products.`,'Restore availability','Shelf Health')));
+  sho.filter(s=>['LOW','LOW_STOCK'].includes(s.status)).forEach(s=>cards.push(recCard('MEDIUM','Shelf','#FBBF24',`Shelf ${s.shelf_id||s.id} has low inventory. Restock soon.`,'Prevent stock-out','Shelf Health')));
+  const d=c?.dwell?.avg_dwell_s||{};
+  if(Object.keys(d).length){
+    const sorted=Object.entries(d).sort((a,b)=>b[1]-a[1]);
+    const top=sorted[0][0];
+    cards.push(recCard('OPPORTUNITY','Dwell','#3B82F6',`Customers spend the most time in the "${top}" area. Consider promoting related products here.`,'Increase conversion','Dwell Time'));
+  }
+  if(!cards.length)cards.push({none:true});
+  $('view-suggestions').innerHTML=`
+    <div class="analytics-header">
+      <div>
+        <button class="back" data-back>← Back to Dashboard</button>
+        <h2 style="margin-top:8px">AI Suggestions</h2>
+        <div class="sub">Actionable recommendations generated from your analytics system.</div>
+      </div>
+    </div>
+    ${cards[0]&&cards[0].none?'<div class="panel">'+emptyState('No AI suggestions yet','Run an analysis to generate actionable recommendations.')+'</div>':cards.join('')}
+  `;
+  bindCommon();
+}
+function recCard(priority,cat,color,text,impact,related){
+  const pc=priority==='HIGH'?'high':priority==='MEDIUM'?'medium':'opportunity';
+  return `<div class="rec-card" style="--pc:${color}">
+    <div class="r-top"><span class="pill-pr ${pc}">${priority} PRIORITY</span><span class="cat">${cat}</span></div>
+    <div class="r-text">${esc(text)}</div>
+    <div class="r-impact">Expected impact: <b>${esc(impact)}</b> · Related: ${esc(related)}</div>
+  </div>`;
+}
+
+// ================================================================ REPORTS
+function renderReports(){
+  const daily=HIST.daily||[]; const runs=RUNS||[];
+  $('view-reports').innerHTML=`
+    <div class="analytics-header">
+      <div>
+        <button class="back" data-back>← Back to Dashboard</button>
+        <h2 style="margin-top:8px">Reports</h2>
+        <div class="sub">Daily and weekly analytics summaries, ready to export.</div>
+      </div>
+      <div class="actions"><a class="btn ghost" href="/api/analytics/report.csv" download><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>Export CSV</a></div>
+    </div>
+    <div class="stats">
+      ${statCard('Total Visits',daily.reduce((a,d)=>a+d.visits,0)||'—','#3B82F6')}
+      ${statCard('Avg Occupancy',mean(daily.map(d=>d.peak_occupancy))!==null?mean(daily.map(d=>d.peak_occupancy)).toFixed(1):'—','#8B5CF6')}
+      ${statCard('Saved Runs',runs.length||'—','#14B8A6')}
+    </div>
+    ${daily.length?`<div class="panel"><h3>Daily summary</h3>
+      <table><thead><tr><th>Date</th><th>Visits</th><th>Peak occupancy</th><th>Peak queue</th><th>Congested (min)</th></tr></thead><tbody>
+      ${daily.map(d=>`<tr><td>${esc(d.date)}</td><td>${d.visits}</td><td>${d.peak_occupancy}</td><td>${d.peak_queue}</td><td>${d.congested_minutes_est}</td></tr>`).join('')}
+      </tbody></table></div>`:emptyState('No reports yet','Run analyses to generate daily summaries.')}
+    ${runs.slice(0,8).length?`<div class="panel"><h3>Recent analysis runs</h3>
+      <table><thead><tr><th>Kind</th><th>When</th><th>Frames</th><th>Unique</th></tr></thead><tbody>
+      ${runs.slice(0,8).map(r=>`<tr><td>${esc(KINDS[r.kind]?.title||r.kind||'—')}</td><td>${fmtDate(r.ended_ts)}</td><td>${r.frames}</td><td>${r.summary?.unique_shoppers||'—'}</td></tr>`).join('')}
+      </tbody></table></div>`:''}
+  `;
+  bindCommon();
+}
+
+// ================================================================ SETTINGS
+function renderSettings(){
+  const c=CFG||{}; const priv=c.privacy||{};
+  $('view-settings').innerHTML=`
+    <div class="analytics-header">
+      <div>
+        <button class="back" data-back>← Back to Dashboard</button>
+        <h2 style="margin-top:8px">Settings</h2>
+        <div class="sub">System configuration, privacy and model information.</div>
+      </div>
+    </div>
+    <div class="grid2b">
+      <div class="panel"><h3>Application</h3>
+        <table><tbody>
+          <tr><td>Store ID</td><td>${esc(c.store_id||'—')}</td></tr>
+          <tr><td>API Host / Port</td><td>${esc(c.host||'—')}:${esc(c.port||'—')}</td></tr>
+          <tr><td>Detector Backend</td><td>${esc(c.detector_backend||'—')}</td></tr>
+          <tr><td>Active Tracks</td><td>${num(c.active_tracks)??'—'}</td></tr>
+          <tr><td>Frames Processed</td><td>${num(c.frames_processed)??'—'}</td></tr>
+        </tbody></table>
+      </div>
+      <div class="panel"><h3>Privacy</h3>
+        <table><tbody>
+          <tr><td>Retain uploaded video</td><td>${priv.retain_uploaded_video===false?'Off':'On'}</td></tr>
+          <tr><td>Retention (hours)</td><td>${num(priv.retention_hours)||'—'}</td></tr>
+          <tr><td>Re-ID enabled</td><td>${c.reid_enabled?'Yes':'No'}</td></tr>
+          <tr><td>Policy</td><td>No facial recognition</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+    <div class="panel"><h3>Model</h3>
+      <table><tbody>
+        <tr><td>Detector image size</td><td>${num(c.model?.imgsz)||'—'}</td></tr>
+        <tr><td>Classes</td><td>${Array.isArray(c.model?.classes)?c.model.classes.join(', '):'—'}</td></tr>
+        <tr><td>Confidence threshold</td><td>${num(c.model?.confidence)||'—'}</td></tr>
+        <tr><td>Alert cooldown</td><td>${num(c.alerts_cooldown_s)||'—'} s</td></tr>
+      </tbody></table>
+    </div>
+  `;
+  bindCommon();
+}
+
+// ================================================================ shared binds
+function bindTabs(group){
+  document.querySelectorAll(`[data-tabs="${group}"] .tab`).forEach(t=>{
+    t.addEventListener('click',()=>{
+      const g=t.closest('[data-tabs]').dataset.tabs;
+      document.querySelectorAll(`[data-tabs="${g}"] .tab`).forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      document.querySelectorAll(`#${g}-${t.dataset.tab}`).forEach(p=>p.classList.add('active'));
+      document.querySelectorAll(`[id^="${g}-"]`).forEach(p=>{if(!p.classList.contains('active')&&p.classList.contains('tab-pane'))p.classList.remove('active');});
+    });
   });
-  $('fileInput').onchange=()=>{if($('fileInput').files[0])upload($('fileInput').files[0],pendingKind);$('fileInput').value='';};
-  // global drag & drop
-  ['dragenter','dragover'].forEach(ev=>window.addEventListener(ev,e=>{e.preventDefault();$('dropHint').classList.add('on');}));
-  window.addEventListener('drop',e=>{e.preventDefault();$('dropHint').classList.remove('on');
-    if(e.dataTransfer.files[0])upload(e.dataTransfer.files[0],pendingKind);});
-  window.addEventListener('dragleave',e=>{if(e.target===document.body)$('dropHint').classList.remove('on');});
 }
-async function upload(file,kind){
-  const fd=new FormData(); fd.append('file',file); fd.append('kind',kind);
-  setStatus(`Uploading ${file.name} (${KINDS[kind]||kind})…`);
+function bindCommon(){
+  document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',()=>showView('dashboard')));
+  document.querySelectorAll('[data-upload]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openUpload(b.dataset.upload);}));
+}
+function bindHeat(id){
+  const img=E(id); if(!img)return;
+  if(SNAP)img.src='/api/heatmap.png?v='+Date.now();
+  else if(RUNS[0])img.src=`/api/runs/${RUNS[0].id}/heatmap.png?v=${Date.now()}`;
+}
+function emptyState(title,sub,withBtn=true){
+  return `<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12h6M8 6h8M4 3h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4a1 1 0 011-1z"/></svg>
+    <div class="t">${title}</div><div class="s">${sub}</div></div>`;
+}
+function statCard(k,v,color){return `<div class="stat"><div class="k">${k}</div><div class="v" style="color:${color}">${esc(v)}</div></div>`;}
+
+// ================================================================ UPLOAD MODAL
+let uploadKind='entry_exit', analyzing=false;
+function openUpload(kind){
+  uploadKind=kind; analyzing=false;
+  const k=KINDS[kind]||KINDS.entry_exit;
+  $('upTitle').textContent=k.title; $('upDesc').textContent=k.desc;
+  $('upIco').innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V7m0 0l-5 5m5-5l5 5M5 3h14"/></svg>`;
+  $('upIco').style.cssText=`--acc:${KINDS[kind].kind==='counter'?'#F97316':kind==='shelf'?'#14B8A6':'#3B82F6'}`;
+  $('upBody').innerHTML=`
+    <div class="drop" id="dropZone">
+      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg></div>
+      <div class="t">Drag &amp; Drop Video Here</div>
+      <div class="s">or <span style="color:var(--blue);font-weight:700">Click to Browse Files</span></div>
+      <div class="fmt">Supported formats: MP4, AVI, MOV</div>
+    </div>
+    <div id="fileRow"></div>
+    <div class="m-foot">
+      <button class="btn ghost" data-close="1">Cancel</button>
+      <button class="btn solid" id="analyzeBtn" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Analyze Video</button>
+    </div>
+  `;
+  const dz=$('dropZone'), fi=$('fileInput');
+  dz.onclick=()=>fi.click();
+  dz.ondragover=e=>{e.preventDefault();dz.classList.add('over');};
+  dz.ondragleave=()=>dz.classList.remove('over');
+  dz.ondrop=e=>{e.preventDefault();dz.classList.remove('over');if(e.dataTransfer.files[0])selectFile(e.dataTransfer.files[0]);};
+  fi.onchange=()=>{if(fi.files[0])selectFile(fi.files[0]);fi.value='';};
+  $('analyzeBtn').onclick=analyzeVideo;
+  $('uploadOverlay').classList.remove('hidden');
+  document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',closeUpload));
+}
+function selectFile(file){
+  const sz=file.size?Math.round(file.size/1024/1024*10)/10+' MB':'';
+  E('fileRow').innerHTML=`<div class="file-row">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2" style="width:22px;height:22px;flex:none"><path d="M7 3h7l5 5v13H7z"/></svg>
+    <span class="n">${esc(file.name)}</span><span class="sz">${sz}</span></div>`;
+  E('analyzeBtn').disabled=false;
+}
+async function analyzeVideo(){
+  const fi=$('fileInput'); let file=fi.files[0];
+  if(!file){const dz=$('dropZone');dz.click();return;}
+  analyzing=true;
+  E('upBody').innerHTML=`
+    <div class="analyzing">
+      <div class="spin"></div>
+      <div style="font-size:14px;font-weight:700">AI is analyzing your video...</div>
+      <div class="steps" id="steps">
+        <div class="st done" id="st0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg><span>Uploading video...</span></div>
+        <div class="st cur" id="st1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg><span>Processing frames...</span></div>
+        <div class="st" id="st2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg><span>Running AI detection...</span></div>
+        <div class="st" id="st3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg><span>Generating analytics...</span></div>
+      </div>
+    </div>`;
   try{
-    const r=await fetch('/api/run/video',{method:'POST',body:fd});
-    const j=await r.json(); if(!r.ok)throw new Error(j.detail||('status '+r.status));
-    STORED=null; setStatus(`Running ${KINDS[kind]||kind} analytics on ${file.name} ✓`);
-    showView('dashboard'); refreshRuns();
-  }catch(e){setStatus('Error: '+e.message,true);}
+    const fd=new FormData(); fd.append('file',file); fd.append('kind',uploadKind);
+    const r=await POST('/api/run/video',fd);
+    setStep(2); await sleep(700); setStep(3);
+    await sleep(700); setStep(4,...['Analysis complete ✓'],true);
+    await sleep(600);
+    closeUpload(); showView('dashboard');
+  }catch(e){
+    E('upBody').innerHTML=`<div class="empty" style="padding:20px"><div class="t">Upload failed</div><div class="s">${esc(e.message)}</div></div>
+      <div class="m-foot"><button class="btn ghost" data-close="1">Close</button></div>`;
+    document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',closeUpload));
+  }
 }
-function setStatus(msg,err){const s=$('statusLine');s.textContent=msg;s.className='status-line'+(err?' err':'');}
+function setStep(n,msg,all){
+  for(let i=0;i<4;i++){
+    const el=E('st'+i);
+    if(el){el.className='st'+(i<n?' done':i===n?' cur':'');if(i<n)el.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg><span>'+(msg&&all?msg:'')+'</span>';}
+  }
+}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function POST(url,body){
+  const r=await fetch(url,{method:'POST',body});
+  let j={}; try{j=await r.json();}catch(e){}
+  if(!r.ok)throw new Error(j.detail||('status '+r.status));
+  return j;
+}
+function closeUpload(){E('uploadOverlay').classList.add('hidden');}
+E('uploadOverlay').addEventListener('click',e=>{if(e.target.id==='uploadOverlay')closeUpload();});
 
-// ---------------------------------------------------------------- actions
-$('demoBtn').onclick=async()=>{
-  setStatus('Starting demo run…');
-  try{const r=await fetch('/api/run/demo',{method:'POST'});const j=await r.json();if(!r.ok)throw new Error(j.detail);
-    STORED=null;setStatus('Demo running ✓');showView('dashboard');}catch(e){setStatus('Error: '+e.message,true);}
-};
-$('stopBtn').onclick=async()=>{
-  try{const r=await fetch('/api/run/stop',{method:'POST'});const j=await r.json();if(!r.ok)throw new Error(j.detail);
-    setStatus('Run stopped — results saved to history.');SNAP=null;refreshRuns();}catch(e){setStatus('Error: '+e.message,true);}
-};
-
-// ---------------------------------------------------------------- polling
-async function refreshRunStatus(){
+// ================================================================ data polling
+async function refreshStatus(){
   try{
     const r=await fetch('/api/run/status');const s=await r.json();
-    $('modePill').textContent=`${s.run.mode||'none'}${s.running?' · running':Object.keys(RUNS).length?'':' · finished'}${s.run.kind?' · '+KINDS[s.run.kind]:''}`;
+    const live=!!s.running;
+    const pill=$('connPill');
+    pill.textContent=live?'● live · '+esc(s.run.mode||''):'◦ idle';
+    pill.className='conn '+(live?'live':'off');
+    $('sysSub').textContent=live?`${esc(s.run.mode||'')} · ${s.running?'running':'finished'}`:'Websocket connected';
   }catch(e){}
 }
 async function refreshRec(){
-  try{const r=await fetch('/api/analytics/recommendation');REC=await r.json();renderRec();}
-  catch(e){REC={live:false,recommendation:null};}
+  try{const r=await fetch('/api/analytics/recommendation');const j=await r.json();REC=j.recommendation;}catch(e){REC=null;}
+  if(currentView==='dashboard')renderDashboard();
 }
 async function refreshRuns(){
-  try{
-    const r=await fetch('/api/runs');const j=await r.json();RUNS=j.runs||[];
-    fillRunPickers();
-    if(!SNAP&&!STORED&&RUNS.length&&['occupancy','queue','shelf'].includes(activeView()))applyStoredRun('');
-    renderCards();
-  }catch(e){}
+  try{const r=await fetch('/api/runs');const j=await r.json();RUNS=j.runs||[];}
+  catch(e){RUNS=[];}
+  if(currentView==='dashboard')renderDashboard();
 }
 async function refreshHistory(){
   try{
     const r=await fetch('/api/analytics/history');const j=await r.json();
-    if(j.live){HIST=j;renderCharts();}
+    if(j.live){HIST=j; if(['occupancy','queue','reports'].includes(currentView))render(currentView);}
   }catch(e){}
 }
+async function refreshConfig(){
+  try{const r=await fetch('/api/config');const j=await r.json();CFG=j;}
+  catch(e){CFG=null;}
+}
 
-// ---------------------------------------------------------------- websocket
 function connect(){
   const proto=location.protocol==='https:'?'wss':'ws';
   const ws=new WebSocket(`${proto}://${location.host}/ws/live`);
-  ws.onopen=()=>{$('connPill').textContent='● live';$('connPill').className='pill live';};
+  ws.onopen=()=>{$('connPill').textContent='● live';$('connPill').className='conn live';
+    $('sysSub').textContent='Websocket connected';};
   ws.onmessage=ev=>{
     try{const msg=JSON.parse(ev.data);
       if(msg.type==='live_snapshot'){
         const cam=Object.values(msg.data||{})[0];
-        if(cam){SNAP=cam;STORED=null;renderCards();renderCharts();if(activeView()==='occupancy')fillOcc();}
+        if(cam){SNAP=cam;
+          if(['dashboard','occupancy','queue','shelf','dwell','suggestions'].includes(currentView))render(currentView);
+        }
       }
     }catch(e){}
   };
-  ws.onclose=()=>{$('connPill').textContent='◦ disconnected';$('connPill').className='pill off';setTimeout(connect,2000);};
+  ws.onclose=()=>{$('connPill').textContent='◦ disconnected';$('connPill').className='conn off';setTimeout(connect,2000);};
 }
 
 // ---------------------------------------------------------------- boot
-window.addEventListener('hashchange',()=>{const h=location.hash.replace('#/','');if(h&&document.querySelector(`[data-view="${h}"]`))showView(h);});
-bindUploads();
-refreshRunStatus(); refreshRec(); refreshRuns(); refreshHistory();
-setInterval(refreshRunStatus,3000); setInterval(refreshRec,3000);
-setInterval(refreshRuns,8000); setInterval(refreshHistory,10000);
+$('demoBtn').onclick=async()=>{try{await POST('/api/run/demo',new URLSearchParams({kind:'entry_exit'}));}catch(e){console.log(e);}};
+$('stopBtn').onclick=async()=>{try{await POST('/api/run/stop');}catch(e){}};
+
+buildNav();
+const initHash=location.hash.replace('#/','');
+if(initHash&&['dashboard','occupancy','queue','shelf','dwell','suggestions','reports','settings'].includes(initHash))showView(initHash);
+else showView('dashboard');
+refreshStatus(); refreshRec(); refreshRuns(); refreshHistory(); refreshConfig();
+setInterval(refreshStatus,3000); setInterval(refreshRec,4000); setInterval(refreshRuns,8000); setInterval(refreshHistory,10000); setInterval(refreshConfig,15000);
 connect();
 </script>
 </body>

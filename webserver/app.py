@@ -503,6 +503,72 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
                         headers={"Content-Disposition":
                                  f"attachment; filename=analytics_{svc.camera_id}.csv"})
 
+    @app.get("/api/analytics/reports")
+    def analytics_reports() -> Dict[str, Any]:
+        """Real aggregated summaries for the Reports page. If there's no live/swapped
+        run, it reports from saved run results (or an empty honest state)."""
+        p = manager.pipeline
+        svc = manager._first_service(p) if p is not None else None
+        live = svc is not None
+        if not live:
+            saved = list_runs(limit=1)
+            if not saved:
+                return {"live": False, "empty": True, "summary": {}, "activity": {},
+                        "daily": [], "peak_hours": [], "runs": []}
+            rid = saved[0]["id"]
+            data = load_run(rid)
+            return {
+                "live": False, "empty": False,
+                "summary": data.get("summary", {}),
+                "activity": {}, "daily": data.get("history", {}).get("daily", []),
+                "peak_hours": data.get("history", {}).get("peak_hours", []),
+                "runs": list_runs(limit=14),
+                "report_csv": False,
+            }
+        cur = svc.current()
+        hist = svc.historical()
+        return {
+            "live": True, "empty": False,
+            "summary": summary_from(cur),
+            "activity": hist.get("activity", {}),
+            "daily": hist.get("daily", []),
+            "peak_hours": hist.get("peak_hours", []),
+            "runs": list_runs(limit=14),
+            "report_csv": True,
+        }
+
+    @app.get("/api/config")
+    def app_config() -> Dict[str, Any]:
+        """Expose REAL app settings + privacy for the Settings page. Nothing fake."""
+        app = settings.get("app", {})
+        priv = settings.get("privacy", {})
+        model = settings.get("model", {})
+        alerts = settings.get("alerts", {})
+        p = manager.pipeline
+        svc = manager._first_service(p) if p is not None else None
+        health = svc.health() if svc is not None else {}
+        monitor = health.get("performance", {}) if isinstance(health, dict) else {}
+        return {
+            "store_id": app.get("store_id"),
+            "host": settings.get("api", {}).get("host"),
+            "port": settings.get("api", {}).get("port"),
+            "model": {
+                "imgsz": model.get("imgsz"),
+                "classes": model.get("classes"),
+                "confidence": model.get("conf"),
+            },
+            "privacy": {
+                "retain_uploaded_video": bool(priv.get("retain_uploaded_video", False)),
+                "retention_hours": priv.get("retention_hours", 24),
+            },
+            "alerts_cooldown_s": alerts.get("cooldown_seconds", 60),
+            "reid_enabled": bool(settings.get("reid", {}).get("enabled", True)),
+            "active_tracks": health.get("active_tracks", 0),
+            "detector_backend": (health.get("detector", {}) or {}).get("backend", "n/a"),
+            "fps": (monitor or {}).get("fps"),
+            "frames_processed": (monitor or {}).get("frames_processed", 0),
+        }
+
     @app.get("/api/run/media")
     def run_media() -> FileResponse:
         """Stream the currently-running uploaded video so the dashboard can show
