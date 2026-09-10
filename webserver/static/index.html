@@ -203,6 +203,25 @@
   .chart-hold{height:260px; position:relative}
   .chart-hold.sm{height:200px}
   img.media{width:100%; border-radius:10px; border:1px solid var(--edge); background:#000; aspect-ratio:16/9; object-fit:contain}
+
+  /* live camera people counter (occupancy) */
+  .livecam-top{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:12px}
+  .livecam-top h3{margin-bottom:0}
+  .livecam-actions{margin-left:auto; display:flex; gap:8px; align-items:center}
+  select.lc-cam{background:var(--card2); color:var(--txt); border:1px solid var(--edge); border-radius:10px;
+    padding:8px 10px; font-size:12.5px; font-weight:600; cursor:pointer; max-width:220px}
+  select.lc-cam:focus{outline:none; border-color:var(--blue)}
+  .lc-cam-name{font-size:12px; font-weight:700; color:var(--sub); background:var(--card2);
+    border:1px solid var(--edge); padding:7px 12px; border-radius:10px; white-space:nowrap}
+  .livecam-count{font-size:13px; font-weight:800; padding:5px 12px; border-radius:20px; white-space:nowrap}
+  .livecam-count.live{background:#0f2419; color:var(--green); border:1px solid #1d6a4e}
+  .livecam-count.off{background:var(--card2); color:var(--muted)}
+  .livecam-frame{width:100%; border-radius:10px; border:1px solid var(--edge); background:#000; aspect-ratio:16/9; object-fit:contain}
+  .livecam-stats{display:flex; gap:26px; margin-top:14px; flex-wrap:wrap}
+  .livecam-stats .ls .k{font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700}
+  .livecam-stats .ls .v{font-size:20px; font-weight:800; margin-top:2px; color:var(--blue)}
+  .livecam-chart{height:150px; margin-top:6px; position:relative}
+  .livecam-note{font-size:11px; color:var(--muted); margin-top:12px}
   table{width:100%; border-collapse:collapse; font-size:12.5px}
   th{text-align:left; color:var(--muted); font-weight:700; padding:8px; border-bottom:1px solid var(--edge)}
   td{padding:8px; border-bottom:1px solid var(--edge2)}
@@ -362,6 +381,8 @@ const KINDS={
 };
 let SNAP=null, LAST=null, LAST_ID=null, HIST={minutes:[],hourly:[],daily:[],peak_hours:[],activity:{}}, RUNS=[], REC=null, CFG=null;
 let charts={}, currentView='dashboard', sidebarOpen=true;
+// live camera people counter state (separate from the analytics pipeline)
+let LCLIVE=false, LC={count:0,peak:0,entries:0,exits:0,avg:null,fps:null,error:null}, LCDEVS=[];
 
 // ---------------------------------------------------------------- helpers
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -489,7 +510,7 @@ function dashCompute(){
     const dir=p===0?'flat':up?(warnUp?'warn':'up'):'down';
     return{dir,txt:`${up?'↑':'↓'} ${Math.abs(p)}%`,at:'vs. last analysis'};};
 
-  const occ=num(f.occupancy)??num(sm?.occupancy);
+  const occ=num(f.occupancy)??num(sm?.occupancy)??(!live&&LCLIVE?LC.count:null);
   const occTrend=trend(occ,sm?sm.occupancy:null);
   const uni=num(r.unique_shoppers??f.unique_shoppers)??num(sm?.unique_shoppers);
   const uniTrend=trend(uni,sm?sm.unique_shoppers:null);
@@ -607,7 +628,7 @@ function bindCardClicks(){
 function patchDashboard(){
   const d=dashCompute();
   setBy('.metric[data-patch="occupancy"] .m-val', d.occ!=null?d.occ:'—');
-  setBy('.metric[data-patch="occupancy"] .m-sub','People currently in store');
+  setBy('.metric[data-patch="occupancy"] .m-sub',(d.live||RUNS[0])?'People currently in store':(LCLIVE?'Live webcam count':'People currently in store'));
   setTrend('.metric[data-patch="occupancy"] .m-trend', d.occTrend);
   setBy('.metric[data-patch="uniques"] .m-val', d.uni!=null?d.uni:'—');
   setBy('.metric[data-patch="uniques"] .m-sub','Unique visitors detected');
@@ -626,13 +647,14 @@ function patchDashboard(){
 }
 function patchOccupancy(){
   const c=CUR(), m=HIST.minutes||[], h=HIST.hourly||[];
-  const occ=c?.footfall, peak=Math.max(0,...m.map(x=>x.peak_occupancy));
+  const mo=occMetrics();
   const st=$('occ-stats');
   if(st)st.innerHTML=
-    statCard('Current Occupancy',c?num(occ?.occupancy)??'—':'—','#3B82F6')+
-    statCard('Total Entries Today',c?num(occ?.total_entries)??0:'—','#34D399')+
-    statCard('Total Exits Today',c?num(occ?.total_exits)??0:'—','#F87171')+
-    statCard('Peak Occupancy',m.length?peak:'—','#8B5CF6');
+    statCard('Current Occupancy',mo.cur,'#3B82F6')+
+    statCard('Total Entries Today',mo.ent,'#34D399')+
+    statCard('Total Exits Today',mo.ext,'#F87171')+
+    statCard('Peak Occupancy',mo.peak,'#8B5CF6');
+  painLiveCam();
   if(m.length){
     const L=m.map(x=>fmtTime(x.ts));
     upChart('occChart',ch=>{ch.data.labels=L;ch.data.datasets[0].data=m.map(x=>x.avg_occupancy);
@@ -707,9 +729,41 @@ function patchDwell(){
 }
 
 // ================================================================ OCCUPANCY
+function occMetrics(){
+  const c=CUR(); const m=HIST.minutes||[];
+  const hasAnalysis=!!c||(RUNS[0]&&RUNS[0].summary);
+  const f=c?.footfall||{};
+  const cur=hasAnalysis?(num(f.occupancy)??'—'):(LCLIVE?(num(LC.count)??'—'):'—');
+  const peak=m.length?Math.max(0,...m.map(x=>x.peak_occupancy)):(LCLIVE?(num(LC.peak)??'—'):'—');
+  return {hasAnalysis,cur,peak,ent:hasAnalysis?(num(f.total_entries)??0):'—',ext:hasAnalysis?(num(f.total_exits)??0):'—'};
+}
+function livecamPanel(){
+  const hasAnalysis=(RUNS[0]&&RUNS[0].summary)||!!CUR();
+  return `
+    <div class="panel" id="occLivePanel" style="border-color:${LCLIVE?'rgba(52,211,153,.5)':'var(--edge)'}">
+      <div class="livecam-top">
+        <h3>Live Camera People Count</h3>
+        <div class="livecam-actions">
+          <span class="livecam-count ${LCLIVE?'live':'off'}" id="lcBadge">${LCLIVE?(LC.count+' people'):'offline'}</span>
+          ${LCLIVE
+            ?`<span class="lc-cam-name">Camera ${num(LC.camera_index)??0}</span><button class="btn ghost" id="lcStop"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>Stop Camera</button>`
+            :`<select class="lc-cam" id="lcCam" title="Choose which camera to use">${lcOptions()}</select><button class="btn solid" id="lcStart"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Start Camera</button>`}
+        </div>
+      </div>
+      <img class="livecam-frame" id="lcFrame" src="" alt="live camera people count"/>
+      <div class="livecam-stats">
+        <div class="ls"><div class="k">People now</div><div class="v" data-lc="count">${LCLIVE?(num(LC.count)??'—'):'—'}</div></div>
+        <div class="ls"><div class="k">Peak</div><div class="v" style="color:var(--purple)" data-lc="peak">${LCLIVE?(num(LC.peak)??'—'):'—'}</div></div>
+        <div class="ls"><div class="k">Avg</div><div class="v" style="color:var(--teal)" data-lc="avg">${LCLIVE?(LC.avg!=null?LC.avg:'—'):'—'}</div></div>
+        <div class="ls"><div class="k">Deltas</div><div class="v" style="font-size:15px;color:var(--sub)" data-lc="del">${LCLIVE?((LC.entries??0)+' in / '+(LC.exits??0)+' out'):'—'}</div></div>
+      </div>
+      <div class="livecam-note" id="lcNote">${hasAnalysis?'Occupancy metrics above come from your uploaded Entry/Exit video analysis.':(LCLIVE?('Live from your webcam · ~'+((LC.fps??'—'))+' fps'):(LC.error?LC.error:'Click Start Camera to begin counting people from your webcam.'))}</div>
+      <div class="livecam-chart" id="lcChartHold"><canvas id="lcChart"></canvas></div>
+    </div>`;
+}
 function renderOccupancy(){
   const c=CUR(); const m=HIST.minutes||[], h=HIST.hourly||[];
-  const occ=c?.footfall, peak=Math.max(0,...m.map(x=>x.peak_occupancy));
+  const mo=occMetrics();
   $('view-occupancy').innerHTML=`
     <div class="analytics-header">
       <div>
@@ -720,11 +774,12 @@ function renderOccupancy(){
       <div class="actions"><button class="btn ghost" data-upload="entry_exit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Upload Entry/Exit Video</button></div>
     </div>
     <div class="stats" id="occ-stats">
-      ${statCard('Current Occupancy',c?num(occ?.occupancy)??'—':'—','#3B82F6')}
-      ${statCard('Total Entries Today',c?num(occ?.total_entries)??0:'—','#34D399')}
-      ${statCard('Total Exits Today',c?num(occ?.total_exits)??0:'—','#F87171')}
-      ${statCard('Peak Occupancy',m.length?peak:'—','#8B5CF6')}
+      ${statCard('Current Occupancy',mo.cur,'#3B82F6')}
+      ${statCard('Total Entries Today',mo.ent,'#34D399')}
+      ${statCard('Total Exits Today',mo.ext,'#F87171')}
+      ${statCard('Peak Occupancy',mo.peak,'#8B5CF6')}
     </div>
+    ${livecamPanel()}
     <div class="tabs" data-tabs="occ">
       <button class="tab active" data-tab="overview">Overview</button>
       <button class="tab" data-tab="heatmap">Heatmap</button>
@@ -748,7 +803,7 @@ function renderOccupancy(){
       </div>`:emptyState('No trends yet','Footfall trends will appear once a video is analyzed.',false)}
     </div>
   `;
-  bindCommon(); bindTabs('occ'); bindHeat('occHeatImg');
+  bindCommon(); bindTabs('occ'); bindHeat('occHeatImg'); bindLiveCam();
   if(m.length){
     chart('occChart',{type:'line',data:{labels:m.map(x=>fmtTime(x.ts)),datasets:[
       {label:'occupancy',data:m.map(x=>x.avg_occupancy),borderColor:'#3B82F6',tension:.3,pointRadius:0,fill:true,backgroundColor:'rgba(59,130,246,.12)'},
@@ -761,6 +816,66 @@ function renderOccupancy(){
     const pk=(HIST.peak_hours||[]).slice(0,8);
     chart('occPeak',{type:'bar',data:{labels:pk.map(x=>x.hour+':00'),datasets:[{label:'avg footfall',data:pk.map(x=>x.avg_footfall),backgroundColor:'#8B5CF6'}]},options:{...baseOpts}});
   }
+}
+
+// ---- live camera people counter (webcam; feeds occupancy when no video is analyzed)
+function lcOptions(){
+  const devs=(LCDEVS&&LCDEVS.length)?LCDEVS:[{index:0,name:'Camera 0',resolution:''}];
+  return devs.map(d=>`<option value="${d.index}">${d.name}${d.resolution?' ('+d.resolution+')':''}</option>`).join('');
+}
+function bindLiveCam(){
+  const s=$('lcStart'), o=$('lcStop');
+  if(s)s.onclick=async()=>{
+    const sel=E('lcCam'); const idx=sel?parseInt(sel.value||'0',10):0;
+    await POST('/api/livecount/start',JSON.stringify({index:idx}));
+    refreshLiveCount();
+  };
+  if(o)o.onclick=async()=>{await POST('/api/livecount/stop',null);refreshLiveCount();};
+  if(LCLIVE&&$('lcFrame'))$('lcFrame').src='/api/livecount/stream?v='+Date.now();
+  paintLcChart();
+  refreshDevices().then(()=>{const sel=E('lcCam');if(sel && !LCLIVE)sel.innerHTML=lcOptions();});
+}
+async function refreshDevices(){
+  try{const r=await fetch('/api/livecount/devices');const j=await r.json();LCDEVS=j.devices||[];}
+  catch(e){LCDEVS=[];}
+}
+function paintLcChart(){
+  const el=E('lcChart'); if(!el)return;
+  const h=(LC.history||[]).slice(-60);
+  const cfg={type:'line',data:{labels:h.map(x=>'-'+x.t+'s'),datasets:[
+    {label:'people',data:h.map(x=>x.c),borderColor:'#52E0A6',tension:.3,pointRadius:0,fill:true,backgroundColor:'rgba(52,211,153,.10)'}]},
+    options:{...baseOpts,plugins:{legend:{display:false}}}};
+  const prev=charts.lcChart;
+  if(prev&&prev.canvas&&el.parentNode&&prev.canvas.parentNode===el.parentNode){prev.data=cfg.data;prev.update('none');}
+  else chart('lcChart',cfg);
+}
+function painLiveCam(){
+  const f=$('lcFrame');
+  if(LCLIVE&&f&&!f.src.includes('livecount'))f.src='/api/livecount/stream?v='+Date.now();
+  const badge=$('lcBadge');
+  if(badge){badge.className='livecam-count '+(LCLIVE?'live':'off');badge.textContent=LCLIVE?((LC.count??0)+' people'):'offline';}
+  const set=(k,v)=>{const el=document.querySelector(`[data-lc="${k}"]`);if(el)el.textContent=v;};
+  set('count',LCLIVE?(num(LC.count)??'—'):'—');
+  set('peak',LCLIVE?(num(LC.peak)??'—'):'—');
+  set('avg',LCLIVE?(LC.avg!=null?LC.avg:'—'):'—');
+  set('del',LCLIVE?((LC.entries??0)+' in / '+(LC.exits??0)+' out'):'—');
+  const note=$('lcNote');
+  if(note){
+    const hasAnalysis=(RUNS[0]&&RUNS[0].summary)||!!CUR();
+    note.textContent=hasAnalysis?'Occupancy metrics above come from your uploaded Entry/Exit video analysis.'
+      :(LCLIVE?('Live from your webcam · ~'+((LC.fps??'—'))+' fps')
+        :(LC.error?LC.error:'Click Start Camera to begin counting people from your webcam.'));
+  }
+  paintLcChart();
+}
+async function refreshLiveCount(){
+  try{
+    const r=await fetch('/api/livecount/status');const j=await r.json();
+    const was=LCLIVE;
+    LCLIVE=!!j.running; LC=j;
+    if(currentView==='occupancy'){if(LCLIVE!==was)renderOccupancy();else painLiveCam();}
+    if(currentView==='dashboard')liveApply('dashboard');
+  }catch(e){if(LCLIVE){LCLIVE=false;if(currentView==='occupancy')renderOccupancy();}}
 }
 
 // ================================================================ QUEUE
@@ -1242,8 +1357,8 @@ buildNav();
 const initHash=location.hash.replace('#/','');
 if(initHash&&['dashboard','occupancy','queue','shelf','dwell','suggestions','reports','settings'].includes(initHash))showView(initHash);
 else showView('dashboard');
-refreshStatus(); refreshRec(); refreshRuns(); refreshHistory(); refreshConfig();
-setInterval(refreshStatus,3000); setInterval(refreshRec,4000); setInterval(refreshRuns,8000); setInterval(refreshHistory,10000); setInterval(refreshConfig,15000);
+refreshStatus(); refreshRec(); refreshRuns(); refreshHistory(); refreshConfig(); refreshLiveCount(); refreshDevices();
+setInterval(refreshStatus,3000); setInterval(refreshRec,4000); setInterval(refreshRuns,8000); setInterval(refreshHistory,10000); setInterval(refreshConfig,15000); setInterval(refreshLiveCount,2000);
 connect();
 </script>
 </body>

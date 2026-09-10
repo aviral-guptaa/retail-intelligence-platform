@@ -18,7 +18,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (FastAPI, File, Form, HTTPException, Request, UploadFile,
+                     WebSocket, WebSocketDisconnect)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -35,8 +36,9 @@ from webserver.run_store import (  # noqa: E402
 from app.services.inference_service import InferencePipeline  # noqa: E402
 from app.services.analytics_service import AnalyticsService   # noqa: E402
 from app.api.websocket import hub                             # noqa: E402
-from config.loader import load_settings                       # noqa: E402
+from config.loader import load_settings, resolve               # noqa: E402
 from database.repository import Repository                     # noqa: E402
+from webserver.live_counter import LivePeopleCounter           # noqa: E402
 
 logger = logging.getLogger("webserver")
 
@@ -250,6 +252,11 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
         CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
     app.state.manager = manager
     app.state.settings = settings
+    live_counter = LivePeopleCounter(
+        camera_index=int(settings.get("app", {}).get("live_camera_index", 0)),
+        model_path=resolve(settings.get("model", {}).get(
+            "yolo_model", "models/yolo/yolov8n.pt")))
+    app.state.live_counter = live_counter
 
     # ------------------------------------------------------------------ pages
     @app.get("/", include_in_schema=False)
@@ -322,6 +329,51 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
             "uptime_s": round(time.time() - manager.run_meta["started_ts"], 1)
                         if manager.run_meta["started_ts"] else 0,
         }
+
+    # -------------------------------------------------- live camera people count
+    @app.post("/api/livecount/start")
+    async def livecount_start(request: Request) -> Dict[str, Any]:
+        counter = app.state.live_counter
+        cam_index: Optional[int] = None
+        try:
+            data = await request.json()
+            if isinstance(data, dict) and data.get("index") is not None:
+                cam_index = int(data["index"])
+        except Exception:
+            cam_index = None
+        if cam_index is not None and cam_index != counter.camera_index and counter.running:
+            counter.stop()
+        counter.start(camera_index=cam_index)
+        return {"ok": counter.running and counter.error is None,
+                "running": counter.running,
+                "camera_index": counter.camera_index,
+                "error": counter.error}
+
+    @app.post("/api/livecount/stop")
+    def livecount_stop() -> Dict[str, Any]:
+        app.state.live_counter.stop()
+        return {"ok": True, "running": False}
+
+    @app.get("/api/livecount/status")
+    def livecount_status() -> Dict[str, Any]:
+        return app.state.live_counter.status()
+
+    @app.get("/api/livecount/devices")
+    def livecount_devices() -> Dict[str, Any]:
+        counter = app.state.live_counter
+        return {"devices": counter.devices(),
+                "current": counter.camera_index,
+                "running": counter.running}
+
+    @app.get("/api/livecount/stream")
+    def livecount_stream(max_frames: Optional[int] = None) -> Response:
+        counter = app.state.live_counter
+        if not counter.running:
+            raise HTTPException(404, "live camera not started")
+        return StreamingResponse(
+            counter.stream_frames(max_frames=max_frames),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+        )
 
     # ---------------------------------------------------- persisted runs (history)
     @app.get("/api/runs")

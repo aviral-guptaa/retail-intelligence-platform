@@ -103,7 +103,7 @@ def train(args) -> int:
     metrics = model.val(data=str(data_path), device=device, imgsz=args.imgsz, verbose=False)
     counts = _dataset_counts(data_path)
     summary = {
-        "source": "ShellSense Misplacement boxes (single class: product)",
+        "source": args.source,
         "dataset": str(data_path), "epochs": args.epochs, "imgsz": args.imgsz,
         "device": device, "classes": ["product"],
         **counts,
@@ -131,6 +131,9 @@ def main() -> int:
     ap.add_argument("--device", default="auto")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--out", default="models/yolo/yolov8n-product.pt")
+    ap.add_argument("--source",
+                    default="ShellSense Misplacement boxes (single class: product)",
+                    help="honest provenance label written to the .metrics.json")
     args = ap.parse_args()
     return train(args)
 
