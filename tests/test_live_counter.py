@@ -162,3 +162,127 @@ def test_livecount_endpoints_idle(client):
     assert "count" in st and "peak" in st and "history" in st
     assert client.get("/api/livecount/stream").status_code == 404
     assert client.post("/api/livecount/stop").json()["ok"] is True
+
+
+def test_livecount_frame_endpoint(client):
+    """POST /api/livecount/frame with a JPEG returns a JSON result. If YOLO is
+    installed a real annotated frame comes back; otherwise an honest error."""
+    ok, buf = cv2_encode_jpeg()
+    resp = client.post("/api/livecount/frame", content=buf,
+                       headers={"Content-Type": "image/jpeg"})
+    assert resp.status_code == 200
+    out = resp.json()
+    assert "count" in out and "history" in out and "frame" in out
+    assert out.get("frame") == "" or out["frame"].startswith("/9j/")  # base64 JPEG
+
+
+def test_livecount_frame_endpoint_bad_body(client):
+    resp = client.post("/api/livecount/frame", content=b"not a jpeg",
+                       headers={"Content-Type": "image/jpeg"})
+    assert resp.status_code == 200
+    out = resp.json()
+    assert out.get("frame") == ""
+
+
+def test_livecount_config_endpoint(client):
+    counter = client.app.state.live_counter
+    resp = client.post("/api/livecount/config", json={"conf": 0.55, "imgsz": 640})
+    assert resp.json()["ok"] is True
+    assert counter.conf == 0.55
+    assert counter.imgsz == 640
+
+
+def _make_box(boxes, frame, conf=0.9):
+    """Patch helper: emulate the ultralytics result surface process_frame reads."""
+    from webserver.live_counter import PERSON_CLASS
+    class _Row:
+        def __init__(self, vals):
+            self.vals = vals
+        def tolist(self):
+            return list(self.vals)
+    class _RowL:
+        def __init__(self, rows):
+            self.rows = rows
+        def __getitem__(self, i):
+            return _Row(self.rows[i])
+    class _Attr:
+        def __init__(self, scalar):
+            self.scalar = scalar
+        def __getitem__(self, i):
+            return self.scalar
+    class _Box:
+        def __init__(self, xy, cls=PERSON_CLASS, conf=conf):
+            self.xyxy = _RowL((xy,))
+            self.cls = _Attr(cls)
+            self.conf = _Attr(conf)
+    class _Res:
+        def __init__(self, boxes):
+            self.boxes = _BoxL(boxes)
+    class _BoxL:
+        def __init__(self, boxes):
+            self.boxes = boxes
+        def __getitem__(self, i):
+            return self.boxes[i]
+    return _Res([_Box(b) for b in boxes])
+
+
+def cv2_encode_jpeg():
+    import cv2
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    ok, buf = cv2.imencode(".jpg", frame)
+    if not ok:
+        return False, b""
+    return True, buf.tobytes()
+
+
+def test_process_frame_tracks_line_counting():
+    """Browser-mode: process_frame runs YOLO -> tracker -> line counter and
+    returns an annotated frame + line-based entries/exits. Small per-frame
+    movement so the IoU tracker keeps stable anonymous ids across crossings."""
+    from webserver.live_counter import LivePeopleCounter
+
+    c = LivePeopleCounter(min_interval=0.0)
+    c._model = object()  # placeholder; replaced with FakeModel below
+    c._model_path = "yolov8n.pt"
+
+    # Two persons; line at y = 0.72*240 = 172.8.  Centers move in 4px steps:
+    #   start below the line (y=210) -> cross up (entry) -> cross down (exit).
+    person_x = [90, 210]
+    def box_for(y_center):
+        return [[px - 20, y_center - 20, px + 20, y_center + 20] for px in person_x]
+
+    frames = []
+    y = 210                 # below line
+    while y > 120:          # climb up, crossing 172.8 on the way
+        frames.append(box_for(y))
+        y -= 4
+    while y < 210:          # descend back, crossing 172.8 downward
+        frames.append(box_for(y))
+        y += 4
+
+    boxes_iter = iter(frames)
+
+    class FakeModel:
+        def __call__(self, frame, conf=0.4, imgsz=640, verbose=False):
+            return [_make_box(next(boxes_iter, []), frame)]
+
+    c._model = FakeModel()
+    c._ensure_tracker((240, 320, 3))
+
+    outs = []
+    for _ in frames:
+        ok, jpg = cv2_encode_jpeg()
+        res = c.process_frame(jpg)
+        outs.append(res)
+
+    # Both persons crossed upward (entries) and downward (exits).
+    assert outs[-1]["entries"] == 2
+    assert outs[-1]["exits"] == 2
+    assert outs[-1]["frame"]
+    import base64 as b64
+    assert b64.b64decode(outs[-1]["frame"])[:2] == b"\xff\xd8"  # JPEG magic
+
+    st = c.status()
+    assert st["entries"] == outs[-1]["entries"]
+    assert st["exits"] == outs[-1]["exits"]
+    assert "frame" in outs[0]

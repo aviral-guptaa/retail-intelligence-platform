@@ -222,6 +222,10 @@
   .livecam-stats .ls .v{font-size:20px; font-weight:800; margin-top:2px; color:var(--blue)}
   .livecam-chart{height:150px; margin-top:6px; position:relative}
   .livecam-note{font-size:11px; color:var(--muted); margin-top:12px}
+  .livecam-controls{display:flex; gap:18px; align-items:center; margin-top:10px; flex-wrap:wrap}
+  .livecam-controls label{font-size:11px; color:var(--muted); display:flex; align-items:center; gap:6px; font-weight:600}
+  .livecam-controls input[type=range]{width:80px; accent-color:var(--blue)}
+  .livecam-controls select{background:var(--card2); color:var(--txt); border:1px solid var(--edge); border-radius:6px; padding:4px 8px; font-size:11px}
   table{width:100%; border-collapse:collapse; font-size:12.5px}
   th{text-align:left; color:var(--muted); font-weight:700; padding:8px; border-bottom:1px solid var(--edge)}
   td{padding:8px; border-bottom:1px solid var(--edge2)}
@@ -382,7 +386,8 @@ const KINDS={
 let SNAP=null, LAST=null, LAST_ID=null, HIST={minutes:[],hourly:[],daily:[],peak_hours:[],activity:{}}, RUNS=[], REC=null, CFG=null;
 let charts={}, currentView='dashboard', sidebarOpen=true;
 // live camera people counter state (separate from the analytics pipeline)
-let LCLIVE=false, LC={count:0,peak:0,entries:0,exits:0,avg:null,fps:null,error:null}, LCDEVS=[];
+let LCLIVE=false, BCSTREAM=null, BCINTERVAL=null, LCCAMNAME='Webcam', LCCFG={model:'yolov8n.pt',conf:0.4,imgsz:640};
+let LC={count:0,peak:0,entries:0,exits:0,avg:null,fps:null,error:null}, LCDEVS=[];
 
 // ---------------------------------------------------------------- helpers
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -746,7 +751,7 @@ function livecamPanel(){
         <div class="livecam-actions">
           <span class="livecam-count ${LCLIVE?'live':'off'}" id="lcBadge">${LCLIVE?(LC.count+' people'):'offline'}</span>
           ${LCLIVE
-            ?`<span class="lc-cam-name">Camera ${num(LC.camera_index)??0}</span><button class="btn ghost" id="lcStop"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>Stop Camera</button>`
+            ?`<span class="lc-cam-name" id="lcCamName">${esc(LCCAMNAME||'Webcam')}</span><button class="btn ghost" id="lcStop"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>Stop</button>`
             :`<select class="lc-cam" id="lcCam" title="Choose which camera to use">${lcOptions()}</select><button class="btn solid" id="lcStart"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Start Camera</button>`}
         </div>
       </div>
@@ -755,9 +760,17 @@ function livecamPanel(){
         <div class="ls"><div class="k">People now</div><div class="v" data-lc="count">${LCLIVE?(num(LC.count)??'—'):'—'}</div></div>
         <div class="ls"><div class="k">Peak</div><div class="v" style="color:var(--purple)" data-lc="peak">${LCLIVE?(num(LC.peak)??'—'):'—'}</div></div>
         <div class="ls"><div class="k">Avg</div><div class="v" style="color:var(--teal)" data-lc="avg">${LCLIVE?(LC.avg!=null?LC.avg:'—'):'—'}</div></div>
-        <div class="ls"><div class="k">Deltas</div><div class="v" style="font-size:15px;color:var(--sub)" data-lc="del">${LCLIVE?((LC.entries??0)+' in / '+(LC.exits??0)+' out'):'—'}</div></div>
+        <div class="ls"><div class="k">In / Out (line)</div><div class="v" style="font-size:15px;color:var(--sub)" data-lc="del">${LCLIVE?((LC.entries??0)+' in / '+(LC.exits??0)+' out'):'—'}</div></div>
       </div>
-      <div class="livecam-note" id="lcNote">${hasAnalysis?'Occupancy metrics above come from your uploaded Entry/Exit video analysis.':(LCLIVE?('Live from your webcam · ~'+((LC.fps??'—'))+' fps'):(LC.error?LC.error:'Click Start Camera to begin counting people from your webcam.'))}</div>
+      <div class="livecam-controls">
+        <label>Conf <input type="range" id="lcConf" min="0.1" max="0.9" step="0.05" value="0.4" title="Detection confidence threshold"/></label>
+        <label>Model <select id="lcModel" title="YOLO model size (accuracy vs speed)">
+          <option value="yolov8n.pt" ${LCCFG.model==='yolov8n.pt'?'selected':''}>YOLOv8n · fast</option>
+          <option value="yolov8s.pt" ${LCCFG.model==='yolov8s.pt'?'selected':''}>YOLOv8s · balanced</option>
+          <option value="yolov8m.pt" ${LCCFG.model==='yolov8m.pt'?'selected':''}>YOLOv8m · accurate</option>
+        </select></label>
+      </div>
+      <div class="livecam-note" id="lcNote">${hasAnalysis?'Occupancy metrics above come from your uploaded Entry/Exit video analysis.':(LCLIVE?('Live from your camera · ~'+((LC.fps??'—'))+' fps'):(LC.error?LC.error:'Click Start Camera to begin counting people from your webcam.'))}</div>
       <div class="livecam-chart" id="lcChartHold"><canvas id="lcChart"></canvas></div>
     </div>`;
 }
@@ -820,25 +833,99 @@ function renderOccupancy(){
 
 // ---- live camera people counter (webcam; feeds occupancy when no video is analyzed)
 function lcOptions(){
-  const devs=(LCDEVS&&LCDEVS.length)?LCDEVS:[{index:0,name:'Camera 0',resolution:''}];
-  return devs.map(d=>`<option value="${d.index}">${d.name}${d.resolution?' ('+d.resolution+')':''}</option>`).join('');
+  const devs=(LCDEVS&&LCDEVS.length)?LCDEVS:[{deviceId:'',name:'Default webcam',label:''}];
+  return devs.map((d,i)=>`<option value="${d.deviceId}">${d.label||d.name||('Camera '+(i+1))}</option>`).join('');
+}
+async function enumerateBrowserCameras(){
+  try{
+    const g=await navigator.mediaDevices.getUserMedia({video:true});
+    if(g)g.getTracks().forEach(t=>t.stop());
+  }catch(e){/* permission denied - no permission banner, picker stays on defaults */}
+  try{
+    const devs=await navigator.mediaDevices.enumerateDevices();
+    const vids=devs.filter(d=>d.kind==='videoinput');
+    LCDEVS=vids.length?vids.map(d=>({deviceId:d.deviceId,name:d.label||'Webcam',label:d.label||'Webcam'})):[];
+  }catch(e){LCDEVS=[];}
+  const sel=E('lcCam');
+  if(sel&&sel.options.length===1&&LCDEVS.length){sel.innerHTML=lcOptions();}
+}
+async function startBrowserCapture(){
+  const sel=E('lcCam');
+  const deviceId=sel?sel.value:'';
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({
+      video:deviceId?{deviceId:{exact:deviceId}}:{facingMode:'user'},
+      audio:false});
+    BCSTREAM=stream;
+    const tr=stream.getVideoTracks()[0];
+    LCCAMNAME=tr.label||'Webcam';
+    const fc=E('lcCamName'); if(fc)fc.innerHTML=esc(LCCAMNAME);
+    LCLIVE=true;
+    const badge=E('lcBadge');
+    if(badge){badge.className='livecam-count live';badge.textContent='starting…';}
+    const video=document.createElement('video');
+    video.srcObject=stream; video.playsInline=true;
+    await video.play();
+    const canvas=document.createElement('canvas');
+    const ctx=canvas.getContext('2d');
+
+    const sendFrame=async()=>{
+      if(!BCSTREAM)return;
+      canvas.width=video.videoWidth||640; canvas.height=video.videoHeight||480;
+      ctx.drawImage(video,0,0,canvas.width,canvas.height);
+      canvas.toBlob(async(blob)=>{
+        if(!blob||!BCSTREAM||!LCLIVE)return;
+        try{
+          const resp=await fetch('/api/livecount/frame',{method:'POST',body:blob,
+            headers:{'Content-Type':'image/jpeg'}});
+          const out=await resp.json();
+          if(out&&out.error){LC.error=out.error;LC.count=0;painLiveCam();return;}
+          LC=out; LCLIVE=true;
+          const f=E('lcFrame');
+          if(f&&out.frame)f.src='data:image/jpeg;base64,'+out.frame;
+          painLiveCam();
+        }catch(e){/* transient network - keep stream alive */}
+      },'image/jpeg',0.78);
+    };
+    BCINTERVAL=setInterval(sendFrame,200);
+    sendFrame();
+    const note=E('lcNote');
+    if(note&&!(RUNS[0]&&RUNS[0].summary)&&!CUR())note.textContent='Frame processing…';
+  }catch(e){
+    LCLIVE=false;
+    LC.error='Camera access denied or no camera available: '+(e&&e.name?e.name:e);
+    LCCAMNAME='Webcam';
+    refreshLiveCount();
+    if(currentView==='occupancy')renderOccupancy();
+  }
+}
+function stopBrowserCapture(){
+  if(BCINTERVAL){clearInterval(BCINTERVAL);BCINTERVAL=null;}
+  if(BCSTREAM){BCSTREAM.getTracks().forEach(t=>t.stop());BCSTREAM=null;}
+  LCLIVE=false;LCCAMNAME='Webcam';
+  const f=E('lcFrame');if(f)f.src='';
+  if(currentView==='occupancy')renderOccupancy();
 }
 function bindLiveCam(){
-  const s=$('lcStart'), o=$('lcStop');
-  if(s)s.onclick=async()=>{
-    const sel=E('lcCam'); const idx=sel?parseInt(sel.value||'0',10):0;
-    await POST('/api/livecount/start',JSON.stringify({index:idx}));
-    refreshLiveCount();
+  const s=E('lcStart'), o=E('lcStop');
+  if(s)s.onclick=lcsafe(startBrowserCapture);
+  if(o)o.onclick=stopBrowserCapture;
+  const conf=E('lcConf'), mdl=E('lcModel');
+  const applyCfg=async()=>{
+    if(conf)conf.value=LCCFG.conf;
+    if(mdl)mdl.value=LCCFG.model;
+    try{await fetch('/api/livecount/config',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({conf:LCCFG.conf,model:LCCFG.model})});}catch(e){}
   };
-  if(o)o.onclick=async()=>{await POST('/api/livecount/stop',null);refreshLiveCount();};
-  if(LCLIVE&&$('lcFrame'))$('lcFrame').src='/api/livecount/stream?v='+Date.now();
+  if(conf)conf.onchange=()=>{LCCFG.conf=parseFloat(conf.value);applyCfg();};
+  if(mdl)mdl.onchange=()=>{LCCFG.model=mdl.value;applyCfg();};
+  applyCfg();
+  enumerateBrowserCameras().then(()=>{const sel=E('lcCam');if(sel&&!LCLIVE)sel.innerHTML=lcOptions();});
+  refreshLiveCount();
   paintLcChart();
-  refreshDevices().then(()=>{const sel=E('lcCam');if(sel && !LCLIVE)sel.innerHTML=lcOptions();});
 }
-async function refreshDevices(){
-  try{const r=await fetch('/api/livecount/devices');const j=await r.json();LCDEVS=j.devices||[];}
-  catch(e){LCDEVS=[];}
-}
+function lcsafe(fn){return async(e)=>{try{await fn(e);}catch(err){console.error(err);}};}
 function paintLcChart(){
   const el=E('lcChart'); if(!el)return;
   const h=(LC.history||[]).slice(-60);
@@ -850,20 +937,18 @@ function paintLcChart(){
   else chart('lcChart',cfg);
 }
 function painLiveCam(){
-  const f=$('lcFrame');
-  if(LCLIVE&&f&&!f.src.includes('livecount'))f.src='/api/livecount/stream?v='+Date.now();
-  const badge=$('lcBadge');
+  const badge=E('lcBadge');
   if(badge){badge.className='livecam-count '+(LCLIVE?'live':'off');badge.textContent=LCLIVE?((LC.count??0)+' people'):'offline';}
   const set=(k,v)=>{const el=document.querySelector(`[data-lc="${k}"]`);if(el)el.textContent=v;};
   set('count',LCLIVE?(num(LC.count)??'—'):'—');
   set('peak',LCLIVE?(num(LC.peak)??'—'):'—');
   set('avg',LCLIVE?(LC.avg!=null?LC.avg:'—'):'—');
   set('del',LCLIVE?((LC.entries??0)+' in / '+(LC.exits??0)+' out'):'—');
-  const note=$('lcNote');
+  const note=E('lcNote');
   if(note){
     const hasAnalysis=(RUNS[0]&&RUNS[0].summary)||!!CUR();
     note.textContent=hasAnalysis?'Occupancy metrics above come from your uploaded Entry/Exit video analysis.'
-      :(LCLIVE?('Live from your webcam · ~'+((LC.fps??'—'))+' fps')
+      :(LCLIVE?('Live from your camera · ~'+((LC.fps??'—'))+' fps')
         :(LC.error?LC.error:'Click Start Camera to begin counting people from your webcam.'));
   }
   paintLcChart();
@@ -871,11 +956,9 @@ function painLiveCam(){
 async function refreshLiveCount(){
   try{
     const r=await fetch('/api/livecount/status');const j=await r.json();
-    const was=LCLIVE;
-    LCLIVE=!!j.running; LC=j;
-    if(currentView==='occupancy'){if(LCLIVE!==was)renderOccupancy();else painLiveCam();}
-    if(currentView==='dashboard')liveApply('dashboard');
-  }catch(e){if(LCLIVE){LCLIVE=false;if(currentView==='occupancy')renderOccupancy();}}
+    if(j&&!LCLIVE&&j.running){LC=j;LCLIVE=true;}
+    if(j&&LCLIVE&&!j.running&&!BCSTREAM){LCLIVE=false;}
+  }catch(e){}
 }
 
 // ================================================================ QUEUE
@@ -1357,7 +1440,7 @@ buildNav();
 const initHash=location.hash.replace('#/','');
 if(initHash&&['dashboard','occupancy','queue','shelf','dwell','suggestions','reports','settings'].includes(initHash))showView(initHash);
 else showView('dashboard');
-refreshStatus(); refreshRec(); refreshRuns(); refreshHistory(); refreshConfig(); refreshLiveCount(); refreshDevices();
+refreshStatus(); refreshRec(); refreshRuns(); refreshHistory(); refreshConfig(); refreshLiveCount();
 setInterval(refreshStatus,3000); setInterval(refreshRec,4000); setInterval(refreshRuns,8000); setInterval(refreshHistory,10000); setInterval(refreshConfig,15000); setInterval(refreshLiveCount,2000);
 connect();
 </script>

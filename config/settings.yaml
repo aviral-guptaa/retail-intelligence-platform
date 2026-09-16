@@ -7,6 +7,14 @@ app:
   log_level: INFO
   heartbeat_interval_seconds: 1
   store_id: "store_01"          # top-level store identity for alerts/POS scoping
+  live_camera_index: 0          # fallback server-side webcam index (local mode only)
+  live_counter:                 # browser-mode live people counter defaults
+    conf: 0.4
+    imgsz: 960
+    max_width: 960
+    model: "models/yolo/yolov8n.pt"
+    line_start: [0.1, 0.72]     # virtual counting line (relative coords)
+    line_end: [0.9, 0.72]
 
 demo:                        # Demo mode configuration (no camera / ML required)
   enabled: true

@@ -1,21 +1,29 @@
 """Live webcam people counting for the Occupancy view.
 
-A small standalone background thread: captures the local camera (cv2), runs
-YOLOv8 person detection (COCO class 0 = "person" — the same approach as the
-external ``queue_model`` repo's ``people_counter.py``) and exposes the latest
-annotated JPEG frame plus rolling count stats.
+Two modes:
 
-Purely additive to the dashboard: it NEVER touches the analytics RunManager /
-video pipeline. When no uploaded video is present, the Occupancy metrics fall
-back to these live counts; when a video run is active, the video results win.
-Nothing is recorded — frames live only in memory while the counter runs.
+1. **Browser capture** (primary — any device): any laptop opens the dashboard,
+   captures its webcam via ``getUserMedia``, sends JPEG frames to
+   ``POST /api/livecount/frame``.  Server runs YOLOv8 + IoU tracking + line
+   counting and returns an annotated JPEG + stats.
+
+2. **Server camera** (local fallback): the machine hosting the dashboard opens
+   its webcam via ``cv2.VideoCapture`` in a background thread.  Used by tests
+   and local-only setups.
+
+Both paths never touch the analytics RunManager / video pipeline.  Nothing is
+recorded — frames live only in memory while the counter runs.
 """
 from __future__ import annotations
 
+import base64
 import logging
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from collections import deque
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +38,16 @@ class LivePeopleCounter:
         camera_index: int = 0,
         model_path: str = "yolov8n.pt",
         conf: float = 0.4,
+        imgsz: int = 960,
         max_width: int = 960,
         history_len: int = 120,
         min_interval: float = 0.1,
+        line_start: Tuple[float, float] = (0.1, 0.72),
+        line_end: Tuple[float, float] = (0.9, 0.72),
     ) -> None:
         self.camera_index = camera_index
         self.conf = conf
+        self.imgsz = imgsz
         self.max_width = max_width
         self.history_len = history_len
         self.min_interval = min_interval
@@ -56,25 +68,57 @@ class LivePeopleCounter:
         self.exits = 0
         self.history: List = []
 
+        self._line_start_rel = line_start
+        self._line_end_rel = line_end
+
+        self._tracker: Any = None
+        self._tracker_lock = threading.Lock()
+        self._line_counter: Any = None
+        self._frame_times: deque = deque(maxlen=30)
+        self._smooth_alpha = 0.35
+        self._smoothed_count: float = 0.0
+
     # ------------------------------------------------------------ lifecycle
+    def _ensure_model(self) -> bool:
+        if self._model is not None:
+            return True
+        try:
+            from ultralytics import YOLO  # noqa: PLC0415
+            self._model = YOLO(self._model_path)
+            return True
+        except Exception as exc:  # pragma: no cover - env dependent
+            self._model = None
+            self.error = f"could not load YOLO model ({exc})"
+            logger.warning("live counter: %s", self.error)
+            return False
+
+    def _ensure_tracker(self, frame_shape: Tuple[int, ...]) -> None:
+        if self._tracker is not None:
+            return
+        from ml.tracking.tracker import Tracker  # noqa: PLC0415
+        from ml.shopper.line_counter import LineCounter  # noqa: PLC0415
+        h, w = frame_shape[:2]
+        ls = (self._line_start_rel[0] * w, self._line_start_rel[1] * h)
+        le = (self._line_end_rel[0] * w, self._line_end_rel[1] * h)
+        self._tracker = Tracker(
+            {"max_age_frames": 30, "min_hits": 1, "iou_match_threshold": 0.30},
+            "live_camera",
+        )
+        self._line_counter = LineCounter(
+            ls, le, "live_camera",
+            {"cooldown_frames": 8, "entry_direction": "up"},
+        )
+
     def start(self, camera_index: Optional[int] = None) -> bool:
         """Open the camera and start the detection thread. Reusable across
-        start/stop cycles (the model is loaded once). ``camera_index`` may be
+        start/stop cycles (the model is loaded once).  ``camera_index`` may be
         passed to switch to a different (e.g. external USB) webcam."""
         if self.running:
             return True
         if camera_index is not None:
             self.camera_index = int(camera_index)
-        if self._model is None:
-            try:
-                from ultralytics import YOLO  # noqa: PLC0415
-
-                self._model = YOLO(self._model_path)
-            except Exception as exc:  # pragma: no cover - env dependent
-                self._model = None
-                self.error = f"could not load YOLO model ({exc})"
-                logger.warning("live counter: %s", self.error)
-                return False
+        if not self._ensure_model():
+            return False
         try:
             import cv2  # noqa: PLC0415
 
@@ -119,13 +163,25 @@ class LivePeopleCounter:
             self._frame_jpeg = None
         logger.info("live counter stopped")
 
+    def reconfigure(self, conf: Optional[float] = None, imgsz: Optional[int] = None,
+                    model_path: Optional[str] = None) -> None:
+        """Runtime reconfiguration.  Model is reloaded lazily on next frame."""
+        if conf is not None:
+            self.conf = float(conf)
+        if imgsz is not None:
+            self.imgsz = int(imgsz)
+        if model_path is not None:
+            self._model_path = model_path
+            self._model = None  # force reload
+            self._tracker = None
+            self._line_counter = None
+            self._ensure_model()
+        logger.info("live counter reconfigured: conf=%.2f imgsz=%d model=%s",
+                     self.conf, self.imgsz, self._model_path)
+
     # --------------------------------------------------------------- stream
     def stream_frames(self, poll_sec: float = 0.1, max_frames: Optional[int] = None):
-        """Yield the latest annotated JPEG as an MJPEG push stream.
-
-        Repeats the newest cached frame; ``max_frames`` bounds the total parts
-        for tests/clients that want a finite body.
-        """
+        """Yield the latest annotated JPEG as an MJPEG push stream."""
         sent = 0
         last: Optional[bytes] = None
         while True:
@@ -164,10 +220,7 @@ class LivePeopleCounter:
             }
 
     def devices(self, probe: int = 7) -> List[Dict[str, Any]]:
-        """Probe local camera indices and report which are available.
-
-        Skips the index currently owned by a running counter session.
-        """
+        """Probe local camera indices and report which are available."""
         import cv2  # noqa: PLC0415
 
         found: List[Dict[str, Any]] = []
@@ -192,6 +245,150 @@ class LivePeopleCounter:
         if not n:
             return None
         return round(sum(c for _, c in self.history) / n, 1)
+
+    # ------------------------------------------------------------ browser mode
+    def process_frame(self, frame_bytes: bytes) -> Dict[str, Any]:
+        """Process a JPEG frame sent from a browser.  Returns annotated frame
+        (base64 JPEG) + live stats.  This is the primary entry point for the
+        browser-capture mode (any-laptop access)."""
+        import cv2  # noqa: PLC0415
+
+        if not self._ensure_model():
+            return {"error": self.error or "model not available", "frame": ""}
+
+        nparr = np.frombuffer(frame_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if frame is None:
+            return {"error": "invalid frame", "frame": ""}
+
+        h, w = frame.shape[:2]
+        if w > self.max_width:
+            scale = self.max_width / float(w)
+            frame = cv2.resize(frame, (self.max_width, max(1, int(h * scale))))
+            h, w = frame.shape[:2]
+
+        self._ensure_tracker((h, w, 3))
+
+        results = self._model(frame, conf=self.conf, imgsz=self.imgsz, verbose=False)
+        raw_boxes = [b for b in results[0].boxes if int(b.cls[0]) == PERSON_CLASS]
+
+        from app.schemas.models import Detection  # noqa: PLC0415
+
+        detections: List[Detection] = []
+        for box in raw_boxes:
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            c = float(box.conf[0])
+            box_area = (x2 - x1) * (y2 - y1)
+            frame_area = w * h
+            if frame_area > 0 and box_area / frame_area < 0.001:
+                continue
+            if y2 > h * 0.97:
+                continue
+            if (x2 - x1) < 8 or (y2 - y1) < 16:
+                continue
+            detections.append(Detection(
+                x1=x1, y1=y1, x2=x2, y2=y2,
+                confidence=c, class_id=PERSON_CLASS, class_name="person",
+            ))
+
+        with self._tracker_lock:
+            tracks = self._tracker.update(detections, frame)
+            person_tracks = [t for t in tracks if t.class_name == "person"]
+            events = self._line_counter.update(person_tracks)
+
+        raw_count = len(person_tracks)
+
+        t0 = time.monotonic()
+        if self._frame_times:
+            dt = t0 - self._frame_times[-1]
+            self._smoothed_count += self._smooth_alpha * (raw_count - self._smoothed_count)
+        else:
+            self._smoothed_count = float(raw_count)
+        self._frame_times.append(t0)
+
+        avg_fps = 0.0
+        if len(self._frame_times) >= 2:
+            span = self._frame_times[-1] - self._frame_times[0]
+            if span > 0:
+                avg_fps = round((len(self._frame_times) - 1) / span, 1)
+
+        now = time.time()
+        with self._lock:
+            for ev in events:
+                if ev.event_type == "entry":
+                    self.entries += 1
+                elif ev.event_type == "exit":
+                    self.exits += 1
+            self.count = raw_count
+            self.peak = max(self.peak, raw_count)
+            self.history.append((now, raw_count))
+            if len(self.history) > self.history_len:
+                del self.history[0]
+            history_snap = [{"t": round(now - t, 1), "c": c} for t, c in self.history]
+            avg = round(sum(c for _, c in self.history) / len(self.history), 1) if self.history else None
+
+        annotated = self._annotate_tracks(frame, person_tracks, raw_count)
+        ok, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        frame_b64 = base64.b64encode(buf.tobytes()).decode() if ok else ""
+
+        return {
+            "frame": frame_b64,
+            "count": raw_count,
+            "peak": self.peak,
+            "entries": self.entries,
+            "exits": self.exits,
+            "avg": avg,
+            "fps": avg_fps,
+            "history": history_snap,
+            "model": True,
+        }
+
+    # --------------------------------------------------------------- detect
+    def detect(self, frame):
+        """Run YOLOv8 person detection -> (person_count, boxes)."""
+        if self._model is None:
+            return 0, []
+        results = self._model(frame, conf=self.conf, verbose=False)
+        boxes = [b for b in results[0].boxes if int(b.cls[0]) == PERSON_CLASS]
+        return len(boxes), boxes
+
+    def _annotate_tracks(self, frame, tracks, count):
+        import cv2  # noqa: PLC0415
+
+        for tr in tracks:
+            x1, y1, x2, y2 = map(int, [tr.x1, tr.y1, tr.x2, tr.y2])
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            label = f"#{tr.id}"
+            cv2.putText(frame, label, (x1, y1 - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2)
+
+        if self._line_counter is not None:
+            h, w = frame.shape[:2]
+            lp1 = tuple(map(int, self._line_counter.line_start))
+            lp2 = tuple(map(int, self._line_counter.line_end))
+            cv2.line(frame, lp1, lp2, (0, 165, 255), 2, cv2.LINE_AA)
+            cv2.putText(frame, "counting line", (lp1[0] + 5, lp1[1] - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 165, 255), 1)
+
+        label = f"People: {count}"
+        cv2.rectangle(frame, (0, 0), (230, 42), (0, 0, 0), -1)
+        cv2.putText(frame, label, (12, 29), cv2.FONT_HERSHEY_SIMPLEX, 0.9,
+                    (0, 255, 0), 2)
+        return frame
+
+    def annotate(self, frame, boxes, count):
+        import cv2  # noqa: PLC0415
+
+        for box in boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(frame, "person", (x1, y1 - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        label = f"People: {count}"
+        cv2.rectangle(frame, (0, 0), (220, 40), (0, 0, 0), -1)
+        cv2.putText(frame, label, (15, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.9,
+                    (0, 255, 0), 2)
+        return frame
 
     # ---------------------------------------------------------------- loop
     def _loop(self) -> None:
@@ -236,26 +433,3 @@ class LivePeopleCounter:
             except Exception as exc:  # pragma: no cover
                 logger.warning("live counter annotate: %s", exc)
             last = now
-
-    # --------------------------------------------------------------- detect
-    def detect(self, frame):
-        """Run YOLOv8 person detection -> (person_count, boxes)."""
-        if self._model is None:
-            return 0, []
-        results = self._model(frame, conf=self.conf, verbose=False)
-        boxes = [b for b in results[0].boxes if int(b.cls[0]) == PERSON_CLASS]
-        return len(boxes), boxes
-
-    def annotate(self, frame, boxes, count):
-        import cv2  # noqa: PLC0415
-
-        for box in boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(frame, "person", (x1, y1 - 8),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-        label = f"People: {count}"
-        cv2.rectangle(frame, (0, 0), (220, 40), (0, 0, 0), -1)
-        cv2.putText(frame, label, (15, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.9,
-                    (0, 255, 0), 2)
-        return frame

@@ -252,10 +252,17 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
         CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
     app.state.manager = manager
     app.state.settings = settings
+    lc_cfg = settings.get("app", {}).get("live_counter", {})
     live_counter = LivePeopleCounter(
         camera_index=int(settings.get("app", {}).get("live_camera_index", 0)),
-        model_path=resolve(settings.get("model", {}).get(
-            "yolo_model", "models/yolo/yolov8n.pt")))
+        model_path=resolve(lc_cfg.get("model", settings.get("model", {}).get(
+            "yolo_model", "models/yolo/yolov8n.pt"))),
+        conf=float(lc_cfg.get("conf", 0.4)),
+        imgsz=int(lc_cfg.get("imgsz", 960)),
+        max_width=int(lc_cfg.get("max_width", 960)),
+        line_start=tuple(lc_cfg.get("line_start", (0.1, 0.72))),
+        line_end=tuple(lc_cfg.get("line_end", (0.9, 0.72))),
+    )
     app.state.live_counter = live_counter
 
     # ------------------------------------------------------------------ pages
@@ -331,6 +338,45 @@ def create_web_app(settings: Optional[Dict[str, Any]] = None) -> FastAPI:
         }
 
     # -------------------------------------------------- live camera people count
+    @app.post("/api/livecount/frame")
+    async def livecount_frame(request: Request) -> Dict[str, Any]:
+        """Accept a JPEG frame from the browser (raw bytes or JSON with base64),
+        run YOLO + tracking + line counting, and return annotated JPEG + stats."""
+        import asyncio, base64 as b64mod, json as jsonmod
+        counter = app.state.live_counter
+        ct = request.headers.get("content-type", "")
+        frame_bytes: Optional[bytes] = None
+        try:
+            if "json" in ct:
+                payload = await request.json()
+                jpeg_b64 = payload.get("frame", "")
+                frame_bytes = b64mod.b64decode(jpeg_b64)
+            else:
+                frame_bytes = await request.body()
+        except Exception:
+            pass
+        if not frame_bytes:
+            return {"error": "no frame", "frame": ""}
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, counter.process_frame, frame_bytes)
+        return result
+
+    @app.post("/api/livecount/config")
+    async def livecount_config(request: Request) -> Dict[str, Any]:
+        """Runtime reconfiguration of the live counter model."""
+        counter = app.state.live_counter
+        try:
+            data = await request.json()
+        except Exception:
+            return {"error": "invalid json"}
+        counter.reconfigure(
+            conf=data.get("conf"),
+            imgsz=data.get("imgsz"),
+            model_path=data.get("model"),
+        )
+        return {"ok": True, "conf": counter.conf, "imgsz": counter.imgsz,
+                "model": counter._model_path}
+
     @app.post("/api/livecount/start")
     async def livecount_start(request: Request) -> Dict[str, Any]:
         counter = app.state.live_counter
