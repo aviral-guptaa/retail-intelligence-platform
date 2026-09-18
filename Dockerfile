@@ -1,11 +1,10 @@
 # SIH 2026 Retail Intelligence — web dashboard (deployed to Render).
-# Light build by default so it succeeds on Render's free tier (fast, small, reliable).
-# The app runs fully in `demo` mode + dashboard with only core deps.
-# Real video person detection needs the ML deps (torch + ultralytics):
-#   build with --build-arg SKIP_ML=0 (much slower, higher RAM).
+# Real video + live-computer person detection needs the ML deps (torch + ultralytics),
+# so SKIP_ML defaults to 0 — the webcam people counter and uploaded-video analysis
+# must work on Render. Build with --build-arg SKIP_ML=1 only for a stripped demo image.
 FROM python:3.13-slim
 
-ARG SKIP_ML=1
+ARG SKIP_ML=0
 
 # opencv needs libgl; keep minimal.
 RUN apt-get update && apt-get install -y --no-install-recommends \
