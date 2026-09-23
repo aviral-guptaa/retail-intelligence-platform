@@ -21,6 +21,7 @@ import logging
 import threading
 import time
 from collections import deque
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -67,6 +68,7 @@ class LivePeopleCounter:
         line_end: Tuple[float, float] = (0.9, 0.72),
     ) -> None:
         self.camera_index = camera_index
+        self._repo_root = str(Path(__file__).resolve().parent.parent)
         self.conf = conf
         self.imgsz = imgsz
         self.max_width = max_width
@@ -218,6 +220,27 @@ class LivePeopleCounter:
             self._frame_jpeg = None
         logger.info("live counter stopped")
 
+    def _normalize_model_path(self, path: str) -> str:
+        """Map a browser-supplied model name onto a real repo file so lazy
+        ONNX-sibling resolution works from any CWD (Render ships no
+        ultralytics and no bare `yolov8n.onnx` in the working directory)."""
+        from pathlib import Path
+
+        p = Path(path)
+        if p.is_absolute():
+            return str(p)
+        # already repo-relative (e.g. "models/yolo/yolov8n.pt")
+        cand = self._repo_root / p
+        if cand.exists():
+            return str(cand.resolve())
+        # bare filename -> prefer the yolo models dir sibling
+        cand = self._repo_root / "models" / "yolo" / p.name
+        if cand.exists():
+            return str(cand.resolve())
+        # nothing on disk yet (ultralytics would download) — keep bare name so
+        # the local ultralytics download path still applies.
+        return str(cand)
+
     def reconfigure(self, conf: Optional[float] = None, imgsz: Optional[int] = None,
                     model_path: Optional[str] = None) -> None:
         """Runtime reconfiguration.  Model is reloaded lazily on next frame."""
@@ -226,7 +249,7 @@ class LivePeopleCounter:
         if imgsz is not None:
             self.imgsz = int(imgsz)
         if model_path is not None:
-            self._model_path = model_path
+            self._model_path = self._normalize_model_path(model_path)
             self._model = None  # force reload
             self.backend = None
             self._tracker = None
@@ -234,6 +257,20 @@ class LivePeopleCounter:
             self._ensure_model()
         logger.info("live counter reconfigured: conf=%.2f imgsz=%d model=%s",
                      self.conf, self.imgsz, self._model_path)
+
+    def _resolve_model_path(self, path: str) -> str:
+        """Accept a bare filename (e.g. 'yolov8n.pt' sent by the browser config
+        dropdown) or a repo-relative path; returns an existing absolute path or
+        the best-effort repo-rooted path so ONNX sibling lookup still works."""
+        from pathlib import Path
+        p = Path(path)
+        if p.is_absolute():
+            return str(p)
+        repo = Path(self._repo_root)
+        for cand in (repo / p, repo / "models" / "yolo" / p.name):
+            if cand.exists():
+                return str(cand.resolve())
+        return str((repo / p).resolve())
 
     # --------------------------------------------------------------- stream
     def stream_frames(self, poll_sec: float = 0.1, max_frames: Optional[int] = None):
