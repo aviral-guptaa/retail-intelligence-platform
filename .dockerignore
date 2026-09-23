@@ -15,7 +15,8 @@ data/uploads/*
 # regenerable labelled crops (see scripts/build_shelf_dataset.py)
 data/shelf/
 models/yolo/*.pt
-models/yolo/*.onnx
+# the ONNX export ships in the image: COPY . . relies on it being present
+# (the fewer-megabyte detector for Render's free tier). Do not exclude it.
 *.log
 *.zip
 .DS_Store

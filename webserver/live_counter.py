@@ -29,6 +29,27 @@ logger = logging.getLogger(__name__)
 
 PERSON_CLASS = 0
 
+MODEL_BACKENDS = ("ultralytics", "onnx")
+
+
+class _ModelHandle:
+    """Thin adapter so both inference backends expose the same ``__call__``.
+
+    ``ultralytics``: a YOLO instance (returns result objects with ``.boxes``).
+    ``onnx``: an :class:`YoloDetector` in ONNX mode (returns Detection lists).
+    """
+
+    def __init__(self, backend: str, model: Any) -> None:
+        self.backend = backend
+        self._model = model
+
+    def __call__(self, frame, conf: float, imgsz: int, verbose: bool = False,
+                 classes: Optional[List[int]] = None):
+        if self.backend == "onnx":
+            return self._model.detect(frame)
+        return self._model(frame, conf=conf, imgsz=imgsz, verbose=verbose,
+                           classes=classes)
+
 
 class LivePeopleCounter:
     """Owns the webcam capture thread + YOLOv8 person counts."""
@@ -53,6 +74,7 @@ class LivePeopleCounter:
         self.min_interval = min_interval
         self._model_path = model_path
         self._model: Any = None
+        self.backend: Optional[str] = None
         self._cap: Any = None
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
@@ -80,17 +102,50 @@ class LivePeopleCounter:
 
     # ------------------------------------------------------------ lifecycle
     def _ensure_model(self) -> bool:
+        """Load a person-detection backend, preferring ultralytics but falling
+        back to ONNX Runtime (lightweight, ships in the Render image)."""
         if self._model is not None:
             return True
+        err_note = ""
+        # 1) ultralytics .pt (local dev / full ML install)
         try:
             from ultralytics import YOLO  # noqa: PLC0415
-            self._model = YOLO(self._model_path)
+            self._model = _ModelHandle("ultralytics", YOLO(self._model_path))
+            self.backend = "ultralytics"
             return True
-        except Exception as exc:  # pragma: no cover - env dependent
-            self._model = None
-            self.error = f"could not load YOLO model ({exc})"
-            logger.warning("live counter: %s", self.error)
-            return False
+        except Exception as exc:  # ultralytics absent or checkpoint unloadable
+            err_note = str(exc)
+        # 2) ONNX .onnx (lightweight Render path) or .pt->.onnx sibling
+        onnx_path = self._resolve_onnx_path()
+        if onnx_path is not None:
+            try:
+                from ml.detection.yolo_detector import YoloDetector  # noqa: PLC0415
+                det = YoloDetector({"yolo_model": str(onnx_path),
+                                    "conf_threshold": self.conf,
+                                    "imgsz": self.imgsz,
+                                    "classes": [PERSON_CLASS]})
+                if det._ort_sess is not None:
+                    self._model = _ModelHandle("onnx", det)
+                    self.backend = "onnx"
+                    self._model_path = str(onnx_path)
+                    return True
+                err_note = det._load_error or err_note
+            except Exception as exc:  # pragma: no cover
+                err_note = str(exc)
+        self._model = None
+        self.error = f"could not load YOLO model ({err_note})"
+        logger.warning("live counter: %s", self.error)
+        return False
+
+    def _resolve_onnx_path(self) -> Optional[str]:
+        from pathlib import Path
+        p = Path(self._model_path)
+        if p.suffix.lower() == ".onnx":
+            return str(p) if p.exists() else None
+        onnx_p = p.with_suffix(".onnx")
+        if onnx_p.exists():
+            return str(onnx_p)
+        return None
 
     def _ensure_tracker(self, frame_shape: Tuple[int, ...]) -> None:
         if self._tracker is not None:
@@ -173,6 +228,7 @@ class LivePeopleCounter:
         if model_path is not None:
             self._model_path = model_path
             self._model = None  # force reload
+            self.backend = None
             self._tracker = None
             self._line_counter = None
             self._ensure_model()
@@ -270,14 +326,22 @@ class LivePeopleCounter:
         self._ensure_tracker((h, w, 3))
 
         results = self._model(frame, conf=self.conf, imgsz=self.imgsz, verbose=False)
-        raw_boxes = [b for b in results[0].boxes if int(b.cls[0]) == PERSON_CLASS]
-
         from app.schemas.models import Detection  # noqa: PLC0415
+
+        raw_boxes = []
+        if self.backend == "onnx":
+            for d in results:
+                raw_boxes.append((d.x1, d.y1, d.x2, d.y2, d.confidence))
+        else:
+            raw_boxes = [b for b in results[0].boxes if int(b.cls[0]) == PERSON_CLASS]
 
         detections: List[Detection] = []
         for box in raw_boxes:
-            x1, y1, x2, y2 = box.xyxy[0].tolist()
-            c = float(box.conf[0])
+            if self.backend == "onnx":
+                x1, y1, x2, y2, c = box
+            else:
+                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                c = float(box.conf[0])
             box_area = (x2 - x1) * (y2 - y1)
             frame_area = w * h
             if frame_area > 0 and box_area / frame_area < 0.001:
@@ -345,11 +409,14 @@ class LivePeopleCounter:
 
     # --------------------------------------------------------------- detect
     def detect(self, frame):
-        """Run YOLOv8 person detection -> (person_count, boxes)."""
+        """Run person detection -> (person_count, boxes)."""
         if self._model is None:
             return 0, []
-        results = self._model(frame, conf=self.conf, verbose=False)
-        boxes = [b for b in results[0].boxes if int(b.cls[0]) == PERSON_CLASS]
+        results = self._model(frame, conf=self.conf, imgsz=self.imgsz, verbose=False)
+        if self.backend == "onnx":
+            boxes = results  # already Detection objects, person-only
+        else:
+            boxes = [b for b in results[0].boxes if int(b.cls[0]) == PERSON_CLASS]
         return len(boxes), boxes
 
     def _annotate_tracks(self, frame, tracks, count):
@@ -380,7 +447,10 @@ class LivePeopleCounter:
         import cv2  # noqa: PLC0415
 
         for box in boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+            if hasattr(box, "xyxy"):  # ultralytics box
+                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+            else:                      # onnx Detection
+                x1, y1, x2, y2 = map(int, [box.x1, box.y1, box.x2, box.y2])
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(frame, "person", (x1, y1 - 8),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)

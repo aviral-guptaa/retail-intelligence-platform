@@ -15,11 +15,17 @@ pytest>=8.0
 
 # Real person detection & edge export (uncomment for real camera/video accuracy).
 # The pipeline degrades gracefully to motion-detection when these are absent.
-torch>=2.2
-torchvision>=0.17
-ultralytics>=8.2
-onnx>=1.16
+#
+# The deployed Render image installs a lightweight ONNX Runtime path instead:
+#   yolov8n.onnx (shipped in the repo) + onnxruntime. For LOCAL ultralytics
+#   inference / training keep the heavier block below.
 onnxruntime>=1.18
+
+# Heavy ML stack for training / strongest local accuracy (NOT in the Docker image).
+# torch>=2.2
+# torchvision>=0.17
+# ultralytics>=8.2
+# onnx>=1.16
 
 # Optional: API tests (TestClient). The tests skip cleanly when absent.
 httpx2>=0.1

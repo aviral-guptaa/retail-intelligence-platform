@@ -103,6 +103,24 @@
   .hero .date{margin-left:auto; font-size:12.5px; color:var(--sub); background:var(--card);
     border:1px solid var(--edge); padding:9px 15px; border-radius:12px; font-weight:600; white-space:nowrap}
 
+  /* first-run instant demo CTA */
+  .get-started{position:relative; overflow:hidden; display:flex; align-items:center; gap:18px;
+    margin-bottom:22px; padding:20px 22px; border-radius:16px; background:
+    linear-gradient(120deg, rgba(59,130,246,.16), rgba(139,92,246,.14) 55%, rgba(236,72,153,.12));
+    border:1px solid rgba(59,130,246,.28)}
+  .get-started .gs-ic{flex:none; width:44px; height:44px; border-radius:12px; display:grid;
+    place-items:center; background:rgba(59,130,246,.18); color:#93C5FD}
+  .get-started .gs-ic svg{width:20px; height:20px}
+  .get-started .gs-txt{flex:1; min-width:0}
+  .get-started .gs-t{font-size:16px; font-weight:700; color:#E6EDFA}
+  .get-started .gs-p{font-size:13px; color:var(--sub); margin-top:3px; line-height:1.5}
+  .get-started .gs-btn{border:none; cursor:pointer; display:inline-flex; align-items:center; gap:8px;
+    padding:11px 18px; border-radius:11px; font-weight:700; font-size:13.5px; color:#06121F;
+    background:linear-gradient(120deg,#52E0A6,#3B82F6); box-shadow:0 6px 18px rgba(59,130,246,.35);
+    transition:box-shadow .2s, transform .1s; white-space:nowrap}
+  .get-started .gs-btn:hover{box-shadow:0 8px 24px rgba(59,130,246,.5)}
+  .get-started .gs-btn:active{transform:translateY(1px)}
+
   /* ============================================================ metric cards */
   .cards{display:grid; gap:18px; margin-bottom:8px}
   @media(min-width:1180px){.cards{grid-template-columns:repeat(3,1fr)}}
@@ -386,7 +404,7 @@ const KINDS={
 let SNAP=null, LAST=null, LAST_ID=null, HIST={minutes:[],hourly:[],daily:[],peak_hours:[],activity:{}}, RUNS=[], REC=null, CFG=null;
 let charts={}, currentView='dashboard', sidebarOpen=true;
 // live camera people counter state (separate from the analytics pipeline)
-let LCLIVE=false, BCSTREAM=null, BCINTERVAL=null, LCCAMNAME='Webcam', LCCFG={model:'yolov8n.pt',conf:0.4,imgsz:640};
+let LCLIVE=false, BCSTREAM=null, BCINTERVAL=null, BCRUN=false, LCCAMNAME='Webcam', LCCFG={model:'yolov8n.pt',conf:0.4,imgsz:640};
 let LC={count:0,peak:0,entries:0,exits:0,avg:null,fps:null,error:null}, LCDEVS=[];
 
 // ---------------------------------------------------------------- helpers
@@ -536,15 +554,29 @@ function dashCompute(){
     shelfOut,shelfLow,shelfTotal,shelfHealth,aiCount,rec:REC};
 }
 function renderDashboard(){
-  const {occ,occTrend,uni,uniTrend,queueTotal,queueTrend,dwTxt,dwellTrend,shelfHealth,shelfOut,shelfLow,shelfTotal,aiCount,live,rec,today}=dashCompute();
+  const {occ,occTrend,uni,uniTrend,queueTotal,queueTrend,dwTxt,dwellTrend,
+         shelfHealth,shelfOut,shelfLow,shelfTotal,aiCount,live,rec}=dashCompute();
+  const hasData=live||(RUNS[0]&&RUNS[0].summary);
+  const today=new Date().toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   $('view-dashboard').innerHTML=`
     <div class="hero">
       <div>
-        <h2>Welcome back!</h2>
-        <p>Here's what's happening in your store today.</p>
+        <h2>${hasData?'Welcome back!':'Start your store analysis'}</h2>
+        <p>${hasData?"Here's what's happening in your store today."
+                    :'No live data yet — run the instant demo or upload a video to see real analytics.'}</p>
       </div>
       <div class="date">${today}</div>
     </div>
+
+    ${!hasData?`
+    <div class="get-started">
+      <div class="gs-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14l11-7z"/></svg></div>
+      <div class="gs-txt">
+        <div class="gs-t">See the full dashboard in seconds</div>
+        <div class="gs-p">Runs a live simulated store (footfall, queues, dwell, shelf health) so every card is populated instantly. No files, no setup.</div>
+      </div>
+      <button class="gs-btn" id="startDemoBtn"><svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M8 5v14l11-7z"/></svg>Run Instant Demo</button>
+    </div>`:''}
 
     <div class="cards">
       ${card('Occupancy','occupancy','#3B82F6',
@@ -581,6 +613,12 @@ function renderDashboard(){
     <div class="dashboard-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l7.5 18 2.5-8 8-2.5zM12 12l6-6"/></svg>Click any metric card to view detailed analytics</div>
   `;
   bindCardClicks();
+  const sdb=E('startDemoBtn');
+  if(sdb)sdb.onclick=async(e)=>{e.stopPropagation(); try{
+    sdb.disabled=true; sdb.textContent='Starting…';
+    const btn=E('demoBtn');
+    if(btn&&!btn.disabled)btn.click(); else await POST('/api/run/demo',new URLSearchParams({kind:'entry_exit'}));
+  }catch(err){console.error(err); sdb.disabled=false; sdb.textContent='Run Instant Demo';}};
 }
 const uploadBtn=(kind,main,help)=>`<button class="upload-cta" data-upload="${kind}">
     <span class="u-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg></span>
@@ -892,20 +930,40 @@ async function startBrowserCapture(){
         }catch(e){/* transient network - keep stream alive */}
       },'image/jpeg',0.78);
     };
-    BCINTERVAL=setInterval(sendFrame,200);
-    sendFrame();
+    // Self-pacing push: send the next frame only after the previous response
+    // arrives, with a ~150ms floor so slow Render CPUs don't build a backlog
+    // of queued JPEG posts (bounding server work to actual webcam throughput).
+    let pushing=true; BCRUN=true;
+    const pushLoop=async()=>{
+      while(pushing&&BCRUN&&BCSTREAM&&LCLIVE){
+        const t0=performance.now();
+        await sendFrame();
+        const dt=performance.now()-t0;
+        if(dt<150){await new Promise(r=>setTimeout(r,150-dt));}
+      }
+      pushing=false;
+    };
+    BCINTERVAL=pushLoop();
     const note=E('lcNote');
     if(note&&!(RUNS[0]&&RUNS[0].summary)&&!CUR())note.textContent='Frame processing…';
   }catch(e){
     LCLIVE=false;
-    LC.error='Camera access denied or no camera available: '+(e&&e.name?e.name:e);
+    const nm=(e&&e.name)||'unknown';
+    const hints={
+      NotAllowedError:'Camera access was blocked. Click the camera/padlock icon in the address bar and allow webcam access, then retry.',
+      NotFoundError:'No camera was found on this device. If you have a USB webcam, connect it and pick it in the dropdown.',
+      NotReadableError:'The camera is in use by another app (e.g. Zoom). Close it and retry.',
+      OverconstrainedError:'The selected camera does not support this resolution. Pick a different device from the dropdown.',
+      SecurityError:'Camera is blocked over an insecure connection. Use http://localhost or the deployed HTTPS site.'
+    };
+    LC.error=hints[nm]||('Camera access denied or no camera available: '+(e&&e.message?e.message:nm));
     LCCAMNAME='Webcam';
     refreshLiveCount();
     if(currentView==='occupancy')renderOccupancy();
   }
 }
 function stopBrowserCapture(){
-  if(BCINTERVAL){clearInterval(BCINTERVAL);BCINTERVAL=null;}
+  if(BCINTERVAL){/* pushLoop is a self-pacing promise; flag it to stop */BCRUN=false;BCINTERVAL=null;}
   if(BCSTREAM){BCSTREAM.getTracks().forEach(t=>t.stop());BCSTREAM=null;}
   LCLIVE=false;LCCAMNAME='Webcam';
   const f=E('lcFrame');if(f)f.src='';

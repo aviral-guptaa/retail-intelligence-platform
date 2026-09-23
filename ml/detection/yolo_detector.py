@@ -89,14 +89,23 @@ class YoloDetector:
 
     def _load(self) -> None:
         path = self.model_path
+        use_onnx = False
         if not path.exists():
-            self._load_error = (f"model not found at {path}; download it with "
-                                f"`python -c \"from ultralytics import YOLO; YOLO('yolov8n.pt')\"` "
-                                f"then re-run, or use demo mode")
-            self.backend = "none"
-            return
+            # Fall back to the ONNX sibling (lightweight Render/edge images
+            # ship only the .onnx export).
+            onnx_p = path.with_suffix(".onnx")
+            if onnx_p.exists():
+                path = onnx_p
+                use_onnx = True
+            else:
+                self._load_error = (f"model not found at {self.model_path}; "
+                                    f"download it with "
+                                    f"`python -c \"from ultralytics import YOLO; "
+                                    f"YOLO('yolov8n.pt')\"` then re-run, or use demo mode")
+                self.backend = "none"
+                return
         try:
-            if path.suffix.lower() == ".onnx":
+            if use_onnx or path.suffix.lower() == ".onnx":
                 self._load_onnx(path)
             else:
                 self._load_ultralytics(path)
@@ -150,9 +159,15 @@ class YoloDetector:
         try:
             self._ort_sess = ort.InferenceSession(str(path), providers=providers,
                                                   sess_options=opts)
+            # The exported model has a fixed input size; use it so config
+            # `imgsz` deviations never feed the wrong shape.
+            inp = self._ort_sess.get_inputs()[0]
+            shape = list(getattr(inp, "shape", None) or [])
+            if len(shape) == 4 and isinstance(shape[2], int) and shape[2] == shape[3]:
+                self.imgsz = int(shape[2])
             self.backend = "onnx"
-            logger.info("Loaded ONNX %s (providers=%s)", path.name,
-                        self._ort_sess.get_providers())
+            logger.info("Loaded ONNX %s (providers=%s, imgsz=%s)", path.name,
+                        self._ort_sess.get_providers(), self.imgsz)
         except Exception as exc:  # pragma: no cover
             self._load_error = f"failed to load ONNX model: {exc}"
             self.backend = "none"
@@ -204,10 +219,19 @@ class YoloDetector:
     def _onnx_preprocess(self, frame: np.ndarray) -> np.ndarray:
         import cv2
         img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        img = cv2.resize(img, (self.imgsz, self.imgsz))
-        img = img.astype(np.float32) / 255.0
-        img = img.transpose(2, 0, 1)           # CHW
-        return np.expand_dims(img, axis=0)     # NCHW
+        h, w = img.shape[:2]
+        # letterbox: fit the frame inside imgsz preserving aspect ratio, then
+        # center-pad to the square input the exported model expects.
+        r = min(self.imgsz / w, self.imgsz / h)
+        new_w, new_h = int(round(w * r)), int(round(h * r))
+        resized = cv2.resize(img, (new_w, new_h))
+        canvas = np.full((self.imgsz, self.imgsz, 3), 114.0, dtype=np.float32)
+        pad_x = (self.imgsz - new_w) // 2
+        pad_y = (self.imgsz - new_h) // 2
+        canvas[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = resized
+        canvas /= 255.0
+        canvas = canvas.transpose(2, 0, 1)        # CHW
+        return np.expand_dims(canvas, axis=0)     # NCHW
 
     def _onnx_detect(self, frame: np.ndarray) -> List[Detection]:
         if self._ort_sess is None:
@@ -216,31 +240,72 @@ class YoloDetector:
             import cv2
             inp = self._onnx_preprocess(frame)
             out = self._ort_sess.run(None, {self._ort_sess.get_inputs()[0].name: inp})[0]
-            # YOLOv8 output: [1, 4+nc, 8400] as (cx, cy, w, h, scores...)
+            # YOLOv8 ONNX output: [1, 4+nc, N] as (cx, cy, w, h, scores...) with
+            # the LAST axis holding the N grid/anchor candidates.
             pred = np.squeeze(out, axis=0)     # [4+nc, N]
-            if pred.ndim == 2 and pred.shape[0] > pred.shape[1]:
-                pred = pred.T                  # -> [N, 4+nc]
+            if pred.ndim == 2 and pred.shape[0] < pred.shape[1]:
+                pred = pred.T                  # -> [N, 4+nc] (rows = candidates)
             h_img, w_img = frame.shape[:2]
-            scale = max(w_img, h_img) / self.imgsz
-            dets: List[Detection] = []
+            # undo the letterbox resize+pad applied in _onnx_preprocess:
+            r = min(self.imgsz / w_img, self.imgsz / h_img)
+            new_w, new_h = int(round(w_img * r)), int(round(h_img * r))
+            pad_x = (self.imgsz - new_w) / 2.0
+            pad_y = (self.imgsz - new_h) / 2.0
+            boxes: List[np.ndarray] = []
+            scores: List[float] = []
+            cls_ids: List[int] = []
             for row in pred:
                 cx, cy, w, h = row[:4]
-                scores = row[4:]
-                cls_id = int(np.argmax(scores))
-                conf = float(scores[cls_id])
+                scores_all = row[4:]
+                cls_id = int(np.argmax(scores_all))
+                conf = float(scores_all[cls_id])
                 if conf < self.conf:
                     continue
                 if self.classes is not None and cls_id not in self.classes:
                     continue
-                x1 = (cx - w / 2) * scale
-                y1 = (cy - h / 2) * scale
-                x2 = (cx + w / 2) * scale
-                y2 = (cy + h / 2) * scale
-                dets.append(Detection(x1, y1, x2, y2, conf, cls_id, str(cls_id)))
+                x1 = (cx - w / 2 - pad_x) / r
+                y1 = (cy - h / 2 - pad_y) / r
+                x2 = (cx + w / 2 - pad_x) / r
+                y2 = (cy + h / 2 - pad_y) / r
+                boxes.append(np.array([x1, y1, x2, y2], dtype=np.float32))
+                scores.append(conf)
+                cls_ids.append(cls_id)
+            keep = self._nms(boxes, scores, self.iou) if boxes else []
+            dets: List[Detection] = []
+            for i in keep:
+                x1, y1, x2, y2 = boxes[i]
+                cls_id = cls_ids[i]
+                dets.append(Detection(x1, y1, x2, y2, scores[i], cls_id, str(cls_id)))
             return dets
         except Exception as exc:  # pragma: no cover
             logger.warning("ONNX detect failed: %s", exc)
             return []
+
+    @staticmethod
+    def _nms(boxes: List[np.ndarray], scores: List[float], iou_thr: float
+             ) -> List[int]:
+        """Class-agnostic NMS.  Returns kept indices (sorted by confidence)."""
+        if not boxes:
+            return []
+        order = sorted(range(len(boxes)), key=lambda i: scores[i], reverse=True)
+        keep: List[int] = []
+        while order:
+            i = order.pop(0)
+            keep.append(i)
+            order = [j for j in order
+                     if YoloDetector._iou(boxes[i], boxes[j]) <= iou_thr]
+        return keep
+
+    @staticmethod
+    def _iou(a: np.ndarray, b: np.ndarray) -> float:
+        x1, y1 = max(a[0], b[0]), max(a[1], b[1])
+        x2, y2 = min(a[2], b[2]), min(a[3], b[3])
+        inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+        if inter <= 0:
+            return 0.0
+        a_area = (a[2] - a[0]) * (a[3] - a[1])
+        b_area = (b[2] - b[0]) * (b[3] - b[1])
+        return inter / (a_area + b_area - inter)
 
     # ------------------------------------------------------------- entrypoint
     def detect(self, frame) -> List[Detection]:

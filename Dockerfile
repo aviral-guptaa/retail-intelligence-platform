@@ -1,7 +1,8 @@
 # SIH 2026 Retail Intelligence — web dashboard (deployed to Render).
-# Real video + live-computer person detection needs the ML deps (torch + ultralytics),
-# so SKIP_ML defaults to 0 — the webcam people counter and uploaded-video analysis
-# must work on Render. Build with --build-arg SKIP_ML=1 only for a stripped demo image.
+# Real person detection runs through the lightweight ONNX Runtime backend
+# (yolov8n.onnx, ~13MB) so the image stays small enough for the free tier.
+# torch + ultralytics are NOT installed here; that heavier (2GB+) path is for
+# local development / training only.
 FROM python:3.13-slim
 
 ARG SKIP_ML=0
@@ -30,21 +31,17 @@ RUN pip install --no-cache-dir \
     pydantic \
     python-multipart
 
-# Optional heavy ML stack for real person detection.
+# Lightweight real person detection: ONNX Runtime only (no torch). The .onnx
+# export ships with the repo. SKIP_ML=1 produces a demo-only image (motion
+# detection fallback).
 RUN if [ "$SKIP_ML" = "0" ]; then \
-      pip install --no-cache-dir torch torchvision ultralytics onnxruntime; \
+      pip install --no-cache-dir onnxruntime; \
     fi
 
-# Copy the app (respects .dockerignore; skips .venv, data, checkpoints).
+# Copy the app (respects .dockerignore; skips .venv, data, caches).
 COPY . .
 
 RUN mkdir -p data/uploads data/raw data/processed models/yolo
-
-# Best-effort YOLOv8n download (only when heavy ML is enabled).
-COPY scripts/fetch_yolov8n.py scripts/fetch_yolov8n.py
-RUN if [ "$SKIP_ML" = "0" ]; then \
-      python scripts/fetch_yolov8n.py || true; \
-    fi
 
 EXPOSE 10000
 CMD ["sh", "-c", "python run_web.py --host 0.0.0.0 --port ${PORT:-10000}"]

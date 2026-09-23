@@ -26,7 +26,8 @@ data/sku110k_fixed.tar.gz
 data/sku110k.part*
 models/prediction/*.joblib
 models/yolo/*.pt
-models/yolo/*.onnx
+# yolov8n.onnx is required for light Render/edge builds (ultralytics-free).
+# It IS committed - force-added (like the queue joblib files). Do not re-add.
 
 # Logs / artifacts
 *.log
