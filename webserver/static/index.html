@@ -1368,6 +1368,7 @@ let heatCache={};
 function bindHeat(id){
   const img=E(id); if(!img)return;
   const isShelf=id==='shelfFrameImg';
+  if(id==='occHeatImg'){img.src='/static/occupancy_heatmap.png?v=0';return;}  // static store heatmap
   let base=null;
   if(SNAP)base=isShelf?'/video_stream':'/api/heatmap.png';
   else if(RUNS[0])base=isShelf?`/api/runs/${RUNS[0].id}/frame.jpg`:`/api/runs/${RUNS[0].id}/heatmap.png`;
