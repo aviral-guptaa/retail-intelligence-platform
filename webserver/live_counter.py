@@ -379,14 +379,6 @@ class LivePeopleCounter:
             else:
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
                 c = float(box.conf[0])
-            box_area = (x2 - x1) * (y2 - y1)
-            frame_area = w * h
-            if frame_area > 0 and box_area / frame_area < 0.001:
-                continue
-            if y2 > h * 0.97:
-                continue
-            if (x2 - x1) < 8 or (y2 - y1) < 16:
-                continue
             detections.append(Detection(
                 x1=x1, y1=y1, x2=x2, y2=y2,
                 confidence=c, class_id=PERSON_CLASS, class_name="person",
@@ -397,7 +389,10 @@ class LivePeopleCounter:
             person_tracks = [t for t in tracks if t.class_name == "person"]
             events = self._line_counter.update(person_tracks)
 
-        raw_count = len(person_tracks)
+        # People in frame = raw detections this frame (repo-style), not tracker
+        # track count — a tracker can merge/drop occluded or brief detections,
+        # which undercounts.  Entries/exits (above) still come from the line.
+        raw_count = len(detections)
 
         t0 = time.monotonic()
         if self._frame_times:
@@ -428,7 +423,7 @@ class LivePeopleCounter:
             history_snap = [{"t": round(now - t, 1), "c": c} for t, c in self.history]
             avg = round(sum(c for _, c in self.history) / len(self.history), 1) if self.history else None
 
-        annotated = self._annotate_tracks(frame, person_tracks, raw_count)
+        annotated = self.annotate(frame, detections, raw_count)
         ok, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
         frame_b64 = base64.b64encode(buf.tobytes()).decode() if ok else ""
 
@@ -456,33 +451,38 @@ class LivePeopleCounter:
             boxes = [b for b in results[0].boxes if int(b.cls[0]) == PERSON_CLASS]
         return len(boxes), boxes
 
-    def _annotate_tracks(self, frame, tracks, count):
+    def _person_heatmap(self, frame, boxes):
+        """Radial JET glow around every detected person, blended onto the frame.
+
+        Mirrors the dashboard heatmap colormap (COLORMAP_JET) so a live view of
+        the store floor shows hotspots following each person in real time."""
         import cv2  # noqa: PLC0415
 
-        for tr in tracks:
-            x1, y1, x2, y2 = map(int, [tr.x1, tr.y1, tr.x2, tr.y2])
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            label = f"#{tr.id}"
-            cv2.putText(frame, label, (x1, y1 - 8),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2)
-
-        if self._line_counter is not None:
-            h, w = frame.shape[:2]
-            lp1 = tuple(map(int, self._line_counter.line_start))
-            lp2 = tuple(map(int, self._line_counter.line_end))
-            cv2.line(frame, lp1, lp2, (0, 165, 255), 2, cv2.LINE_AA)
-            cv2.putText(frame, "counting line", (lp1[0] + 5, lp1[1] - 8),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 165, 255), 1)
-
-        label = f"People: {count}"
-        cv2.rectangle(frame, (0, 0), (230, 42), (0, 0, 0), -1)
-        cv2.putText(frame, label, (12, 29), cv2.FONT_HERSHEY_SIMPLEX, 0.9,
-                    (0, 255, 0), 2)
-        return frame
+        h, w = frame.shape[:2]
+        acc = np.zeros((h, w), dtype=np.float32)
+        for box in boxes:
+            if hasattr(box, "xyxy"):
+                x1, y1, x2, y2 = [float(v) for v in box.xyxy[0].tolist()]
+            else:
+                x1, y1, x2, y2 = float(box.x1), float(box.y1), \
+                                 float(box.x2), float(box.y2)
+            cx, cy = int((x1 + x2) / 2), int((y1 + y2) / 2)
+            rw = max(30, int((x2 - x1) / 2) + 30)
+            rh = max(45, int((y2 - y1) / 2) + 45)
+            blob = np.zeros((h, w), dtype=np.float32)
+            cv2.ellipse(blob, (cx, cy), (rw, rh), 0, 0, 360, 1.0, -1)
+            blob = cv2.GaussianBlur(blob, (0, 0), max(rw, rh) / 2.5)
+            acc = np.maximum(acc, blob)
+        if acc.max() <= 0:
+            return frame
+        heat = cv2.applyColorMap(
+            (np.clip(acc * 255, 0, 255)).astype(np.uint8), cv2.COLORMAP_JET)
+        return cv2.addWeighted(frame, 0.55, heat, 0.45, 0)
 
     def annotate(self, frame, boxes, count):
         import cv2  # noqa: PLC0415
 
+        frame = self._person_heatmap(frame, boxes)
         for box in boxes:
             if hasattr(box, "xyxy"):  # ultralytics box
                 x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
